@@ -208,5 +208,40 @@
             alert("Produit ajouté avec succès au stock et à la caisse !");
         }
     </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body style="font-family: sans-serif; padding: 20px;">
+
+  <h1>Bienvenue sur votre application !</h1>
+  <p id="userEmail"></p>
+  
+  <button id="logoutBtn" style="padding: 8px 15px; cursor: pointer;">Déconnexion</button>
+
+  <script>
+    const SUPABASE_URL = 'https://votre-projet.supabase.co'
+    const SUPABASE_KEY = 'votre-cle-anon-public'
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+    // Vérifier si l'utilisateur est connecté
+    async function checkAuth() {
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (!session) {
+        // Si non connecté, redirection vers login.html
+        window.location.href = 'login.html'
+      } else {
+        document.getElementById('userEmail').innerText = 'Connecté en tant que : ' + session.user.email
+      }
+    }
+
+    checkAuth()
+
+    // Gestion du bouton Déconnexion
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await supabase.auth.signOut()
+      window.location.href = 'login.html'
+    })
+  </script>
 </body>
 </html>
