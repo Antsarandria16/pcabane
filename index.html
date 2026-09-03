@@ -3,164 +3,127 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Connexion - Épicerie Manager</title>
+  <title>Connexion - Épicerie</title>
   
-  <!-- SDK Supabase -->
+  <!-- Chargement de la bibliothèque Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-family: Arial, sans-serif;
       background-color: #f4f6f9;
       display: flex;
       justify-content: center;
       align-items: center;
       min-height: 100vh;
     }
-    .login-card {
-      background: #ffffff;
-      padding: 30px 25px;
+    .card {
+      background: white;
+      padding: 30px;
       border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
       width: 100%;
-      max-width: 360px;
+      max-width: 350px;
     }
-    .login-card h2 {
-      margin-bottom: 20px;
-      color: #333;
-      text-align: center;
-      font-size: 22px;
-    }
-    .form-group {
-      margin-bottom: 15px;
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-    }
-    .form-group label {
-      font-size: 14px;
-      color: #555;
-      font-weight: 600;
-    }
-    .form-group input {
-      padding: 10px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-      font-size: 14px;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-    .form-group input:focus {
-      border-color: #28a745;
-    }
+    h2 { margin-bottom: 20px; text-align: center; color: #333; }
+    .field { margin-bottom: 15px; display: flex; flex-direction: column; gap: 5px; }
+    label { font-size: 14px; font-weight: bold; color: #555; }
+    input { padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
     button {
       width: 100%;
       padding: 12px;
       background-color: #28a745;
       color: white;
       border: none;
-      border-radius: 5px;
+      border-radius: 4px;
       font-size: 16px;
       font-weight: bold;
       cursor: pointer;
-      transition: background-color 0.2s;
-      margin-top: 10px;
     }
-    button:hover {
-      background-color: #218838;
-    }
-    #message {
-      margin-top: 15px;
-      font-size: 14px;
-      text-align: center;
-      min-height: 20px;
-      word-wrap: break-word;
-    }
+    button:hover { background-color: #218838; }
+    #message { margin-top: 15px; font-size: 14px; text-align: center; font-weight: bold; }
   </style>
 </head>
 <body>
 
-  <div class="login-card">
+  <div class="card">
     <h2>Connexion Épicerie</h2>
     
-    <div class="form-group">
-      <label for="email">Email :</label>
+    <div class="field">
+      <label for="email">Email</label>
       <input type="email" id="email" placeholder="votre.email@exemple.com">
     </div>
 
-    <div class="form-group">
-      <label for="password">Mot de passe :</label>
+    <div class="field">
+      <label for="password">Mot de passe</label>
       <input type="password" id="password" placeholder="••••••••">
     </div>
 
-    <button type="button" id="btnConnecter">Se connecter</button>
+    <button type="button" onclick="seConnecter()">Se connecter</button>
+    
     <p id="message"></p>
   </div>
 
   <script>
-    // 1. Initialisation de Supabase avec vos clés
-    const SUPABASE_URL = 'https://qvbrezemqpuoreqfghfc.supabase.co'
-    const SUPABASE_KEY = 'sb_publishable_XY3OjGaFASnBuXbWpnGtHw_ojFoUXyb'
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+    // Initialisation
+    const SUPABASE_URL = 'https://qvbrezemqpuoreqfghfc.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_XY3OjGaFASnBuXbWpnGtHw_ojFoUXyb';
+    
+    let supabase;
+    try {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    } catch (e) {
+      document.getElementById('message').innerText = "Erreur de chargement de Supabase.";
+      document.getElementById('message').style.color = "red";
+    }
 
-    // 2. Vérification automatique si une session est déjà ouverte
-    async function checkExistingSession() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        window.location.href = 'dashboard.html'
+    // Redirection si déjà connecté
+    async function verifierSession() {
+      if (!supabase) return;
+      const { data } = await supabase.auth.getSession();
+      if (data && data.session) {
+        window.location.href = 'dashboard.html';
       }
     }
-    checkExistingSession()
+    verifierSession();
 
-    // 3. Action de connexion au clic du bouton
-    document.getElementById('btnConnecter').addEventListener('click', async () => {
-      const email = document.getElementById('email').value.trim()
-      const password = document.getElementById('password').value.trim()
-      const message = document.getElementById('message')
+    // Fonction de connexion déclenchée par le bouton
+    async function seConnecter() {
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value.trim();
+      const message = document.getElementById('message');
 
-      // Vérification rapide des champs
       if (!email || !password) {
-        message.style.color = '#d9534f'
-        message.innerText = 'Veuillez saisir votre email et votre mot de passe.'
-        return
+        message.style.color = 'red';
+        message.innerText = 'Veuillez remplir l\'email et le mot de passe.';
+        return;
       }
 
-      message.style.color = '#0056b3'
-      message.innerText = 'Connexion en cours...'
+      message.style.color = 'blue';
+      message.innerText = 'Tentative de connexion...';
 
       try {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email,
           password: password,
-        })
+        });
 
         if (error) {
-          message.style.color = '#d9534f'
-          if (error.message === 'Invalid login credentials') {
-            message.innerText = 'Email ou mot de passe incorrect.'
-          } else {
-            message.innerText = 'Erreur : ' + error.message
-          }
-          console.error('Erreur Supabase :', error)
+          message.style.color = 'red';
+          message.innerText = 'Erreur : ' + error.message;
         } else if (data.user) {
-          message.style.color = '#28a745'
-          message.innerText = 'Connexion réussie ! Redirection...'
-          
+          message.style.color = 'green';
+          message.innerText = 'Connexion réussie ! Redirection...';
           setTimeout(() => {
-            window.location.href = 'dashboard.html'
-          }, 500)
+            window.location.href = 'dashboard.html';
+          }, 500);
         }
       } catch (err) {
-        message.style.color = '#d9534f'
-        message.innerText = 'Erreur de connexion au serveur.'
-        console.error('Erreur JS :', err)
+        message.style.color = 'red';
+        message.innerText = 'Erreur technique : ' + err.message;
       }
-    })
+    }
   </script>
 </body>
 </html>
