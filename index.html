@@ -1,43 +1,163 @@
-<script>
-  const SUPABASE_URL = 'https://qvbrezemqpuoreqfghfc.supabase.co'
-  const SUPABASE_KEY = 'sb_publishable_XY3OjGaFASnBuXbWpnGtHw_ojFoUXyb'
-  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
-
-  document.getElementById('loginForm').addEventListener('submit', async (e) => {
-    e.preventDefault()
-    
-    const email = document.getElementById('email').value
-    const password = document.getElementById('password').value
-    const message = document.getElementById('message')
-
-    message.style.color = 'blue'
-    message.innerText = 'Connexion en cours...'
-
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email,
-        password: password,
-      })
-
-      if (error) {
-        message.style.color = 'red'
-        // Afficher l'erreur exacte renvoyée par Supabase
-        message.innerText = 'Erreur : ' + (error.message === 'Invalid login credentials' 
-          ? 'Identifiants incorrects (Email ou mot de passe faux)' 
-          : error.message)
-      } else if (data.user) {
-        message.style.color = 'green'
-        message.innerText = 'Connexion réussie ! Redirection...'
-        
-        // Petite pause pour s'assurer de l'enregistrement de la session avant de rediriger
-        setTimeout(() => {
-          window.location.href = 'dashboard.html'
-        }, 500)
-      }
-    } catch (err) {
-      message.style.color = 'red'
-      message.innerText = 'Erreur réseau ou clé Supabase invalide.'
-      console.error(err)
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connexion - Épicerie</title>
+  
+  <!-- Chargement du SDK Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
-  })
-</script>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f4f6f9;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .login-card {
+      background: #ffffff;
+      padding: 30px 25px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      width: 100%;
+      max-width: 360px;
+    }
+    .login-card h2 {
+      margin-bottom: 20px;
+      color: #333;
+      text-align: center;
+      font-size: 22px;
+    }
+    .form-group {
+      margin-bottom: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .form-group label {
+      font-size: 14px;
+      color: #555;
+      font-weight: 600;
+    }
+    .form-group input {
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-group input:focus {
+      border-color: #28a745;
+    }
+    button[type="submit"] {
+      width: 100%;
+      padding: 12px;
+      background-color: #28a745;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      margin-top: 10px;
+    }
+    button[type="submit"]:hover {
+      background-color: #218838;
+    }
+    #message {
+      margin-top: 15px;
+      font-size: 14px;
+      text-align: center;
+      min-height: 20px;
+      word-wrap: break-word;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="login-card">
+    <h2>Connexion Épicerie</h2>
+    
+    <form id="loginForm">
+      <div class="form-group">
+        <label for="email">Email :</label>
+        <input type="email" id="email" required placeholder="votre.email@exemple.com">
+      </div>
+
+      <div class="form-group">
+        <label for="password">Mot de passe :</label>
+        <input type="password" id="password" required placeholder="••••••••">
+      </div>
+
+      <button type="submit">Se connecter</button>
+      <p id="message"></p>
+    </form>
+  </div>
+
+  <script>
+    // 1. Initialisation des identifiants Supabase
+    const SUPABASE_URL = 'https://qvbrezemqpuoreqfghfc.supabase.co'
+    const SUPABASE_KEY = 'sb_publishable_XY3OjGaFASnBuXbWpnGtHw_ojFoUXyb'
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+    // 2. Redirection automatique si une session est déjà active
+    async function checkExistingSession() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        window.location.href = 'dashboard.html'
+      }
+    }
+    checkExistingSession()
+
+    // 3. Traitement de la connexion lors de la soumission du formulaire
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault()
+      
+      const email = document.getElementById('email').value.trim()
+      const password = document.getElementById('password').value.trim()
+      const message = document.getElementById('message')
+
+      message.style.color = '#0056b3'
+      message.innerText = 'Connexion en cours...'
+
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email,
+          password: password,
+        })
+
+        if (error) {
+          message.style.color = '#d9534f'
+          if (error.message === 'Invalid login credentials') {
+            message.innerText = 'Identifiants incorrects (Email ou mot de passe invalide).'
+          } else {
+            message.innerText = 'Erreur : ' + error.message
+          }
+        } else if (data.user) {
+          message.style.color = '#28a745'
+          message.innerText = 'Connexion réussie ! Redirection...'
+          
+          // Pause de 500ms pour garantir l'écriture de la session dans le stockage du navigateur
+          setTimeout(() => {
+            window.location.href = 'dashboard.html'
+          }, 500)
+        }
+      } catch (err) {
+        message.style.color = '#d9534f'
+        message.innerText = 'Erreur réseau ou problème de communication avec le serveur.'
+        console.error(err)
+      }
+    })
+  </script>
+</body>
+</html>
