@@ -3,98 +3,123 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Connexion Épicerie</title>
-  
-  <!-- Chargement du SDK Supabase -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <title>Connexion - Épicerie</title>
   
   <style>
-    body { font-family: Arial, sans-serif; background: #f4f6f9; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-    .box { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 300px; }
-    .champ { margin-bottom: 15px; }
-    label { display: block; margin-bottom: 5px; font-weight: bold; }
-    input { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
-    button { width: 100%; padding: 10px; background: #28a745; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
-    #status { margin-top: 15px; font-size: 14px; text-align: center; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f6f9;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .card {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 350px;
+    }
+    h2 { margin-bottom: 20px; text-align: center; color: #333; }
+    .field { margin-bottom: 15px; display: flex; flex-direction: column; gap: 5px; }
+    label { font-size: 14px; font-weight: bold; color: #555; }
+    input { padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+    button {
+      width: 100%;
+      padding: 12px;
+      background-color: #28a745;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:hover { background-color: #218838; }
+    #message { margin-top: 15px; font-size: 14px; text-align: center; font-weight: bold; word-break: break-word; }
   </style>
 </head>
 <body>
 
-  <div class="box">
-    <h2 style="text-align: center; margin-bottom: 20px;">Connexion</h2>
+  <div class="card">
+    <h2>Connexion Épicerie</h2>
     
-    <div class="champ">
-      <label>Email</label>
+    <div class="field">
+      <label for="email">Email</label>
       <input type="email" id="email" placeholder="votre.email@exemple.com">
     </div>
 
-    <div class="champ">
-      <label>Mot de passe</label>
+    <div class="field">
+      <label for="password">Mot de passe</label>
       <input type="password" id="password" placeholder="••••••••">
     </div>
 
-    <button type="button" onclick="lancerConnexion()">Se connecter</button>
-
-    <div id="status"></div>
+    <button type="button" id="btnConnecter">Se connecter</button>
+    
+    <p id="message"></p>
   </div>
 
-  <script>
+  <!-- Importation directe via ESM Module pour Vercel -->
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
+
     const SUPABASE_URL = 'https://qvbrezemqpuoreqfghfc.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_XY3OjGaFASnBuXbWpnGtHw_ojFoUXyb';
-    
-    let supabase = null;
 
-    // Initialisation
-    try {
-      if (window.supabase) {
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-      } else {
-        alert("Attention : Le script Supabase ne s'est pas chargé dans le navigateur.");
-      }
-    } catch(err) {
-      alert("Erreur initialisation : " + err.message);
-    }
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    async function lancerConnexion() {
-      const statusDiv = document.getElementById('status');
-      const email = document.getElementById('email').value.trim();
-      const password = document.getElementById('password').value.trim();
-
-      if (!email || !password) {
-        statusDiv.style.color = "red";
-        statusDiv.innerText = "Veuillez remplir l'email et le mot de passe.";
-        return;
-      }
-
-      if (!supabase) {
-        alert("Supabase n'est pas prêt. Vérifiez votre connexion internet.");
-        return;
-      }
-
-      statusDiv.style.color = "blue";
-      statusDiv.innerText = "Envoi à Supabase...";
-
+    // Vérifier la session déjà active
+    async function verifierSession() {
       try {
-        const res = await supabase.auth.signInWithPassword({
-          email: email,
-          password: password
-        });
-
-        if (res.error) {
-          statusDiv.style.color = "red";
-          statusDiv.innerText = "Erreur : " + res.error.message;
-          alert("Erreur de connexion : " + res.error.message);
-        } else if (res.data.user) {
-          statusDiv.style.color = "green";
-          statusDiv.innerText = "Succès ! Redirection...";
+        const { data } = await supabase.auth.getSession();
+        if (data && data.session) {
           window.location.href = 'dashboard.html';
         }
       } catch (e) {
-        statusDiv.style.color = "red";
-        statusDiv.innerText = "Erreur bloquante : " + e.message;
-        alert("Erreur : " + e.message);
+        console.error('Erreur session:', e);
       }
     }
+    verifierSession();
+
+    // Attacher l'événement au bouton
+    document.getElementById('btnConnecter').addEventListener('click', async () => {
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value.trim();
+      const message = document.getElementById('message');
+
+      if (!email || !password) {
+        message.style.color = 'red';
+        message.innerText = 'Veuillez remplir l\'email et le mot de passe.';
+        return;
+      }
+
+      message.style.color = 'blue';
+      message.innerText = 'Envoi de la requête...';
+
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email,
+          password: password,
+        });
+
+        if (error) {
+          message.style.color = 'red';
+          message.innerText = 'Erreur : ' + error.message;
+        } else if (data.user) {
+          message.style.color = 'green';
+          message.innerText = 'Connexion réussie ! Redirection...';
+          setTimeout(() => {
+            window.location.href = 'dashboard.html';
+          }, 500);
+        }
+      } catch (err) {
+        message.style.color = 'red';
+        message.innerText = 'Erreur technique : ' + err.message;
+      }
+    });
   </script>
 </body>
 </html>
