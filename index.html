@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Connexion - Épicerie</title>
+  <title>Connexion - Épicerie Manager</title>
   
-  <!-- Chargement du SDK Supabase -->
+  <!-- SDK Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
   <style>
@@ -58,7 +58,7 @@
     .form-group input:focus {
       border-color: #28a745;
     }
-    button[type="submit"] {
+    button {
       width: 100%;
       padding: 12px;
       background-color: #28a745;
@@ -71,7 +71,7 @@
       transition: background-color 0.2s;
       margin-top: 10px;
     }
-    button[type="submit"]:hover {
+    button:hover {
       background-color: #218838;
     }
     #message {
@@ -88,29 +88,27 @@
   <div class="login-card">
     <h2>Connexion Épicerie</h2>
     
-    <form id="loginForm">
-      <div class="form-group">
-        <label for="email">Email :</label>
-        <input type="email" id="email" required placeholder="votre.email@exemple.com">
-      </div>
+    <div class="form-group">
+      <label for="email">Email :</label>
+      <input type="email" id="email" placeholder="votre.email@exemple.com">
+    </div>
 
-      <div class="form-group">
-        <label for="password">Mot de passe :</label>
-        <input type="password" id="password" required placeholder="••••••••">
-      </div>
+    <div class="form-group">
+      <label for="password">Mot de passe :</label>
+      <input type="password" id="password" placeholder="••••••••">
+    </div>
 
-      <button type="submit">Se connecter</button>
-      <p id="message"></p>
-    </form>
+    <button type="button" id="btnConnecter">Se connecter</button>
+    <p id="message"></p>
   </div>
 
   <script>
-    // 1. Initialisation des identifiants Supabase
+    // 1. Initialisation de Supabase avec vos clés
     const SUPABASE_URL = 'https://qvbrezemqpuoreqfghfc.supabase.co'
     const SUPABASE_KEY = 'sb_publishable_XY3OjGaFASnBuXbWpnGtHw_ojFoUXyb'
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 
-    // 2. Redirection automatique si une session est déjà active
+    // 2. Vérification automatique si une session est déjà ouverte
     async function checkExistingSession() {
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
@@ -119,13 +117,18 @@
     }
     checkExistingSession()
 
-    // 3. Traitement de la connexion lors de la soumission du formulaire
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
-      e.preventDefault()
-      
+    // 3. Action de connexion au clic du bouton
+    document.getElementById('btnConnecter').addEventListener('click', async () => {
       const email = document.getElementById('email').value.trim()
       const password = document.getElementById('password').value.trim()
       const message = document.getElementById('message')
+
+      // Vérification rapide des champs
+      if (!email || !password) {
+        message.style.color = '#d9534f'
+        message.innerText = 'Veuillez saisir votre email et votre mot de passe.'
+        return
+      }
 
       message.style.color = '#0056b3'
       message.innerText = 'Connexion en cours...'
@@ -139,23 +142,23 @@
         if (error) {
           message.style.color = '#d9534f'
           if (error.message === 'Invalid login credentials') {
-            message.innerText = 'Identifiants incorrects (Email ou mot de passe invalide).'
+            message.innerText = 'Email ou mot de passe incorrect.'
           } else {
             message.innerText = 'Erreur : ' + error.message
           }
+          console.error('Erreur Supabase :', error)
         } else if (data.user) {
           message.style.color = '#28a745'
           message.innerText = 'Connexion réussie ! Redirection...'
           
-          // Pause de 500ms pour garantir l'écriture de la session dans le stockage du navigateur
           setTimeout(() => {
             window.location.href = 'dashboard.html'
           }, 500)
         }
       } catch (err) {
         message.style.color = '#d9534f'
-        message.innerText = 'Erreur réseau ou problème de communication avec le serveur.'
-        console.error(err)
+        message.innerText = 'Erreur de connexion au serveur.'
+        console.error('Erreur JS :', err)
       }
     })
   </script>
