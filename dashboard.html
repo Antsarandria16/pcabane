@@ -3,304 +3,429 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestion Épicerie - Pro</title>
-    
-    <!-- Fichier CSS externe -->
+    <title>Épicerie Manager Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    
-    <!-- SDK Supabase -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
-    <script>
-        // 1. Initialisation unique du client Supabase
-        const SUPABASE_URL = 'https://qvbrezemqpuoreqfghfc.supabase.co'
-        const SUPABASE_KEY = 'sb_publishable_XY3OjGaFASnBuXbWpnGtHw_ojFoUXyb'
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
-
-        let currentUser = null;
-
-        // 2. Vérification immédiate de la session
-        async function checkAuth() {
-            const { data: { session } } = await supabase.auth.getSession()
-            
-            if (!session) {
-                window.location.href = 'login.html'
-            } else {
-                currentUser = session.user;
-                document.addEventListener('DOMContentLoaded', () => {
-                    const emailElement = document.getElementById('userEmail')
-                    if (emailElement) {
-                        emailElement.innerText = 'Connecté : ' + currentUser.email
-                    }
-                    // Charger les données dès que la page est prête
-                    chargerProduits()
-                })
-            }
+    <style>
+        .btn-logout {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            margin-left: 12px;
+            transition: background 0.2s;
         }
-        
-        checkAuth()
-    </script>
+        .btn-logout:hover {
+            background-color: #bd2130;
+        }
+        .tag-type {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            display: inline-block;
+        }
+        .tag-ajout { background-color: #e3f2fd; color: #0d47a1; }
+        .tag-vente { background-color: #fbe9e7; color: #d84315; }
+        .tag-appro { background-color: #e8f5e9; color: #1b5e20; }
+        .tag-edition { background-color: #fff8e1; color: #f57f17; }
+        .tag-suppr { background-color: #ffebee; color: #b71c1c; }
+    </style>
 </head>
+
 <body>
 
-    <!-- Barre latérale de navigation -->
-    <aside>
-        <div class="logo">Épicerie Manager</div>
-        <ul class="menu">
-            <li class="active" onclick="switchTab('caisse', event)">Caisse / Vente</li>
-            <li onclick="switchTab('stock', event)">Gestion des Stocks</li>
-        </ul>
-        <div style="padding: 20px 10px;">
-            <p id="userEmail" style="font-size: 12px; color: #aaa; margin-bottom: 10px;"></p>
-            <button id="logoutBtn" style="padding: 8px 12px; cursor: pointer; width: 100%;">Déconnexion</button>
+<button class="menu-toggle-btn" onclick="toggleSidebar()" aria-label="Menu">
+    ☰ Menu
+</button>
+
+<aside id="sidebar" class="sidebar-hidden">
+    <div class="logo">
+        <br><br><h2>🛒 Épicerie <span>Pro</span></h2>
+        <p>Gestion intelligente</p>
+    </div>
+
+    <ul class="menu">
+        <li class="active" onclick="switchTab('dashboard', this)">
+            <span class="icon">📊</span> Tableau de bord
+        </li>
+        <li onclick="switchTab('caisse', this)">
+            <span class="icon">💻</span> Caisse enregistreuse
+        </li>
+        <li onclick="switchTab('stock', this)">
+            <span class="icon">📦</span> Gestion des stocks
+        </li>
+        <li onclick="switchTab('historique-stock', this)">
+            <span class="icon">📋</span> Historique Stock
+        </li>
+        <li onclick="switchTab('analytique', this)">
+            <span class="icon">📈</span> Analyses & Rapports
+        </li>
+        <li onclick="switchTab('historique', this)">
+            <span class="icon">🧾</span> Historique des ventes
+        </li>
+    </ul>
+
+    <div class="sidebar-footer">
+        <div class="system-status">
+            <span class="status-dot"></span> Système Opérationnel
         </div>
-    </aside>
+    </div>
+</aside>
 
-    <!-- Zone Principale -->
-    <main>
-        <header id="header-title">Module Caisse</header>
+<main>
+    <header>
+        <div>
+            <h1 id="header-title">Tableau de bord</h1>
+            <p id="current-date"></p>
+        </div>
 
-        <!-- ONGLET 1 : CAISSE -->
-        <div id="caisse" class="content active">
-            <div class="grid-2">
-                <div>
-                    <div class="card">
-                        <h3>Ajouter un article au panier</h3>
-                        <label for="product-select">Produit :</label>
-                        <select id="product-select">
-                            <option value="">Chargement des produits...</option>
-                        </select>
-                        
-                        <label for="quantity">Quantité :</label>
-                        <input type="number" id="quantity" value="1" min="1">
-                        <button onclick="addToCart()">Ajouter au panier</button>
-                    </div>
+        <div class="header-right">
+            <div id="toast-container"></div>
+            <div class="user-badge">
+                <span class="user-avatar">👨‍💼</span> Caissier principal
+            </div>
+            <button class="btn-logout" onclick="logout()">🚪 Déconnexion</button>
+        </div>
+    </header>
+
+    <section id="dashboard" class="content active">
+        <div class="stats-grid">
+            <div class="stat-card primary">
+                <div class="stat-icon">💰</div>
+                <div class="stat-info">
+                    <span>Caisse du jour</span>
+                    <strong id="dashboard-revenue">0 Ar</strong>
                 </div>
-                <div>
-                    <div class="card">
-                        <h3>Panier en cours</h3>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Produit</th>
-                                    <th>Qté</th>
-                                    <th>Prix</th>
-                                </tr>
-                            </thead>
-                            <tbody id="cart-list">
-                                <!-- Articles affichés ici -->
-                            </tbody>
-                        </table>
-                        <div class="total-box">Total : <span id="cart-total">0.00</span> Ar</div>
-                        <button onclick="checkout()" style="width: 100%;">Valider et Encaisser</button>
-                    </div>
+            </div>
+
+            <div class="stat-card success">
+                <div class="stat-icon">🧾</div>
+                <div class="stat-info">
+                    <span>Ventes aujourd'hui</span>
+                    <strong id="dashboard-sales">0</strong>
+                </div>
+            </div>
+
+            <div class="stat-card warning">
+                <div class="stat-icon">🛒</div>
+                <div class="stat-info">
+                    <span>Articles vendus</span>
+                    <strong id="dashboard-items">0</strong>
+                </div>
+            </div>
+
+            <div class="stat-card info">
+                <div class="stat-icon">📈</div>
+                <div class="stat-info">
+                    <span>Panier moyen</span>
+                    <strong id="dashboard-average">0 Ar</strong>
                 </div>
             </div>
         </div>
 
-        <!-- ONGLET 2 : STOCK -->
-        <div id="stock" class="content">
-            <div class="grid-2">
-                <div>
-                    <div class="card">
-                        <h3>Inventaire des Produits</h3>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Nom</th>
-                                    <th>Prix Unitaire</th>
-                                    <th>Stock Restant</th>
-                                </tr>
-                            </thead>
-                            <tbody id="stock-list">
-                                <!-- Produits chargés depuis Supabase -->
-                            </tbody>
-                        </table>
-                    </div>
+        <div class="grid-2">
+            <div class="card">
+                <h3><span>📊</span> Résumé de la caisse du jour</h3>
+                <div class="summary-row">
+                    <span>Chiffre d'affaires</span>
+                    <strong id="day-revenue">0 Ar</strong>
                 </div>
-                <div>
-                    <div class="card">
-                        <h3>Ajouter un nouveau produit</h3>
-                        <label for="new-name">Nom du produit</label>
-                        <input type="text" id="new-name" placeholder="Ex: Fromage">
-                        
-                        <label for="new-price">Prix (Ar)</label>
-                        <input type="number" id="new-price" step="0.01" placeholder="3000">
-                        
-                        <label for="new-stock">Quantité initiale</label>
-                        <input type="number" id="new-stock" placeholder="15">
-                        
-                        <button onclick="addProduct()">Enregistrer dans Supabase</button>
-                    </div>
+                <div class="summary-row">
+                    <span>Montant total reçu</span>
+                    <strong id="day-received">0 Ar</strong>
+                </div>
+                <div class="summary-row">
+                    <span>Monnaie totale rendue</span>
+                    <strong id="day-change">0 Ar</strong>
+                </div>
+                <div class="summary-row">
+                    <span>Nombre de transactions</span>
+                    <strong id="day-sales">0</strong>
+                </div>
+            </div>
+
+            <div class="card alert-card-wrapper">
+                <h3><span>⚠️</span> Alertes de stock faible</h3>
+                <div id="low-stock-list" class="low-stock-container">
+                    Aucun produit en stock faible.
                 </div>
             </div>
         </div>
-    </main>
+    </section>
 
-    <!-- Script logique d'interaction et API Supabase -->
-    <script>
-        // Déconnexion propre
-        document.getElementById('logoutBtn').addEventListener('click', async () => {
-            await supabase.auth.signOut()
-            window.location.href = 'login.html'
-        })
-
-        // Navigations Onglets
-        function switchTab(tabId, evt) {
-            document.querySelectorAll('.content').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('.menu li').forEach(el => el.classList.remove('active'));
-            
-            document.getElementById(tabId).classList.add('active');
-            if (evt) evt.currentTarget.classList.add('active');
-
-            document.getElementById('header-title').innerText = tabId === 'caisse' ? 'Module Caisse' : 'Module Gestion des Stocks';
-        }
-
-        // --- CHARGEMENT DYNAMIQUE DEPUIS SUPABASE ---
-        async function chargerProduits() {
-            const { data: produits, error } = await supabase.from('produits').select('*').order('nom', { ascending: true })
-
-            if (error) {
-                console.error("Erreur de chargement des produits :", error)
-                return
-            }
-
-            const select = document.getElementById('product-select')
-            const stockList = document.getElementById('stock-list')
-
-            select.innerHTML = ''
-            stockList.innerHTML = ''
-
-            if (produits.length === 0) {
-                select.innerHTML = '<option value="">Aucun produit disponible</option>'
-                stockList.innerHTML = '<tr><td colspan="3">Aucun produit en stock</td></tr>'
-                return
-            }
-
-            produits.forEach(p => {
-                // Remplir le menu déroulant Caisse
-                const opt = document.createElement('option')
-                opt.value = p.id
-                opt.setAttribute('data-price', p.prix)
-                opt.setAttribute('data-name', p.nom)
-                opt.text = `${p.nom} (${p.prix} Ar)`
-                select.add(opt)
-
-                // Remplir le tableau Stock
-                stockList.innerHTML += `
-                    <tr>
-                        <td>${p.nom}</td>
-                        <td>${p.prix} Ar</td>
-                        <td>${p.stock}</td>
-                    </tr>
-                `
-            })
-        }
-
-        // --- LOGIQUE PANIER ET CAISSE ---
-        let cart = [];
-        let total = 0;
-
-        function addToCart() {
-            const select = document.getElementById('product-select');
-            if (!select.value) return;
-
-            const selectedOpt = select.options[select.selectedIndex];
-            const id = selectedOpt.value;
-            const name = selectedOpt.getAttribute('data-name');
-            const unitPrice = parseFloat(selectedOpt.getAttribute('data-price'));
-            const qty = parseInt(document.getElementById('quantity').value);
-
-            if (isNaN(qty) || qty <= 0) {
-                alert("Veuillez saisir une quantité valide.");
-                return;
-            }
-
-            const itemTotal = unitPrice * qty;
-            cart.push({ id, name, qty, unitPrice, price: itemTotal });
-            
-            updateCartUI();
-        }
-
-        function updateCartUI() {
-            const cartList = document.getElementById('cart-list');
-            cartList.innerHTML = '';
-            total = 0;
-
-            cart.forEach(item => {
-                total += item.price;
-                cartList.innerHTML += `<tr><td>${item.name}</td><td>${item.qty}</td><td>${item.price.toFixed(2)} Ar</td></tr>`;
-            });
-
-            document.getElementById('cart-total').innerText = total.toFixed(2);
-        }
-
-        async function checkout() {
-            if (cart.length === 0) {
-                alert("Le panier est vide !");
-                return;
-            }
-
-            // 1. Enregistrer la vente dans Supabase
-            const { data: vente, error: venteError } = await supabase
-                .from('ventes')
-                .insert([{ total: total, user_id: currentUser.id }])
-                .select()
-                .single()
-
-            if (venteError) {
-                alert("Erreur lors de la validation de la vente : " + venteError.message)
-                return
-            }
-
-            // 2. Enregistrer les détails de la vente
-            const lignes = cart.map(item => ({
-                vente_id: vente.id,
-                produit_id: item.id,
-                quantite: item.qty,
-                prix_unitaire: item.unitPrice,
-                total_ligne: item.price
-            }))
-
-            const { error: lignesError } = await supabase.from('ligne_ventes').insert(lignes)
-
-            if (lignesError) {
-                alert("Erreur lors de l'enregistrement des lignes : " + lignesError.message)
-                return
-            }
-
-            alert(`Vente de ${total.toFixed(2)} Ar validée avec succès !`);
-            cart = [];
-            updateCartUI();
-            chargerProduits(); // Recharger les produits
-        }
-
-        // --- LOGIQUE AJOUT PRODUIT EN BASE DE DONNÉES ---
-        async function addProduct() {
-            const name = document.getElementById('new-name').value;
-            const price = parseFloat(document.getElementById('new-price').value);
-            const stock = parseInt(document.getElementById('new-stock').value);
-
-            if (!name || isNaN(price) || isNaN(stock)) {
-                alert("Veuillez remplir tous les champs correctement.");
-                return;
-            }
-
-            const { error } = await supabase
-                .from('produits')
-                .insert([{ nom: name, prix: price, stock: stock }])
-
-            if (error) {
-                alert("Erreur lors de l'ajout dans Supabase : " + error.message)
-            } else {
-                alert("Produit ajouté avec succès dans Supabase !");
-                document.getElementById('new-name').value = '';
-                document.getElementById('new-price').value = '';
-                document.getElementById('new-stock').value = '';
+    <section id="caisse" class="content">
+        <div class="grid-2">
+            <div class="card">
+                <h3><span>🛒</span> Ajouter au panier</h3>
                 
-                chargerProduits(); // Mettre à jour l'affichage
-            }
-        }
-    </script>
+                <div class="form-group">
+                    <label for="product-name-input">Rechercher ou scanner un produit</label>
+                    <div class="search-input-wrapper">
+                        <input
+                            type="text"
+                            id="product-name-input"
+                            placeholder="Tapez le nom du produit..."
+                            list="products-datalist"
+                            oninput="autofillPrice()"
+                            autocomplete="off"
+                        >
+                    </div>
+                    <datalist id="products-datalist"></datalist>
+                </div>
+
+                <div class="form-group">
+                    <label>Prix unitaire</label>
+                    <input
+                        type="number"
+                        id="product-price-input"
+                        readonly
+                        class="input-readonly"
+                        placeholder="0 Ar"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label>Quantité</label>
+                    <div class="qty-control-group">
+                        <input
+                            type="number"
+                            id="quantity"
+                            value="1"
+                            min="1"
+                        >
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" onclick="addToCart()">
+                    ➕ Ajouter au panier
+                </button>
+            </div>
+
+            <div class="card cart-card">
+                <h3><span>🛍️</span> Panier en cours</h3>
+
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Produit</th>
+                                <th>Qté</th>
+                                <th>Prix</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cart-list"></tbody>
+                    </table>
+                </div>
+
+                <div class="total-box">
+                    <span>Total à payer</span>
+                    <strong><span id="cart-total">0</span> Ar</strong>
+                </div>
+
+                <div class="form-group">
+                    <label>Montant reçu du client</label>
+                    <input
+                        type="number"
+                        id="amount-received"
+                        min="0"
+                        placeholder="0"
+                        oninput="calculateChange()"
+                    >
+                </div>
+
+                <div class="total-box change-box">
+                    <span>Monnaie à rendre</span>
+                    <strong><span id="amount-change">0</span> Ar</strong>
+                </div>
+
+                <div class="cart-actions">
+                    <button class="btn btn-success" onclick="checkout()">
+                        💰 Valider la vente
+                    </button>
+                    <button class="btn btn-danger-soft" onclick="cancelCart()">
+                        ❌ Annuler
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="stock" class="content">
+        <div class="grid-2-stock">
+            <div class="card stock-inventory-card">
+                <h3><span>📦</span> Inventaire des produits</h3>
+                <div class="search-bar-container">
+                    <input
+                        type="text"
+                        id="stock-search"
+                        placeholder="🔎 Rechercher par nom de produit..."
+                        oninput="renderStockTable()"
+                    >
+                </div>
+
+                <div class="table-container stock-table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Produit</th>
+                                <th>Catégorie</th>
+                                <th>Prix</th>
+                                <th>Stock</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stock-list"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="stock-side-actions">
+                <div class="card">
+                    <h3 id="stock-form-title"><span>➕</span> Ajouter un produit</h3>
+                    <input type="hidden" id="edit-index" value="-1">
+
+                    <div class="form-group">
+                        <label>Nom du produit</label>
+                        <input type="text" id="new-name" placeholder="Ex: Lait demi-écrémé">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Catégorie</label>
+                        <input type="text" id="new-cat" placeholder="Ex: Produits Laitiers">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Prix de vente (Ar)</label>
+                        <input type="number" id="new-price" min="0" step="0.01" placeholder="0">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Stock initial</label>
+                        <input type="number" id="new-stock" min="0" placeholder="0">
+                    </div>
+
+                    <div class="form-btn-group">
+                        <button id="save-btn" class="btn btn-primary" onclick="saveProduct()">
+                            Enregistrer
+                        </button>
+                        <button id="cancel-btn" class="btn btn-danger" onclick="resetStockForm()" style="display:none">
+                            Annuler
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3><span>📥</span> Approvisionnement rapide</h3>
+                    <div class="form-group">
+                        <label>Sélectionner le produit</label>
+                        <select id="restock-select"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Quantité à ajouter</label>
+                        <input type="number" id="restock-qty" min="1" placeholder="Ex: 10">
+                    </div>
+                    <button class="btn btn-info" onclick="restockProduct()">
+                        📦 Mettre à jour le stock
+                    </button>
+                </div>
+
+                <div class="card">
+                    <h3><span>📂</span> Importation en masse (CSV)</h3>
+                    <div class="file-upload-wrapper">
+                        <input type="file" id="csv-file-input" accept=".csv,.txt">
+                    </div>
+                    <button class="btn btn-warning" onclick="handleBulkUpload()" style="margin-top: 12px;">
+                        🚀 Lancer l'import
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- NOUVELLE SECTION HISTORIQUE STOCK -->
+    <section id="historique-stock" class="content">
+        <div class="card">
+            <h3><span>📋</span> Historique des mouvements de stock</h3>
+            <p class="section-desc">Journal de toutes les entrées, sorties et modifications de stock.</p>
+
+            <div class="table-container history-table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date / Heure</th>
+                            <th>Produit</th>
+                            <th>Type</th>
+                            <th>Variation</th>
+                            <th>Nouveau Stock</th>
+                            <th>Note / Remarque</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stock-history-list"></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <section id="analytique" class="content">
+        <div class="card">
+            <h3><span>📈</span> Vue Analytique & Performances</h3>
+            <p class="section-desc">Aperçu global de la santé financière et de l'activité de votre épicerie.</p>
+            
+            <div class="analytics-grid">
+                <div class="analytics-card">
+                    <h4>Valeur totale du stock</h4>
+                    <span id="analytics-stock-value" class="analytics-value">0 Ar</span>
+                    <p class="analytics-sub">Capital immobilisé dans les produits actuels</p>
+                </div>
+                <div class="analytics-card">
+                    <h4>Nombre total de références</h4>
+                    <span id="analytics-total-refs" class="analytics-value">0</span>
+                    <p class="analytics-sub">Produits différents enregistrés</p>
+                </div>
+                <div class="analytics-card">
+                    <h4>Produits en rupture imminente</h4>
+                    <span id="analytics-low-stock-count" class="analytics-value text-danger">0</span>
+                    <p class="analytics-sub">Moins de 5 unités en stock</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="historique" class="content">
+        <div class="card">
+            <div class="history-header-flex">
+                <h3><span>🧾</span> Historique détaillé des ventes</h3>
+                <div class="total-revenue-badge">
+                    <span>Total cumulé caisse du jour :</span>
+                    <strong><span id="total-revenue">0</span> Ar</strong>
+                </div>
+            </div>
+
+            <div class="table-container history-table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Heure</th>
+                            <th>Articles vendus</th>
+                            <th>Total</th>
+                            <th>Reçu</th>
+                            <th>Rendu</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sales-history-list"></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</main>
+
+<script type="module" src="script.js"></script>
 </body>
 </html>
