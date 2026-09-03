@@ -1,43 +1,19 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <title>Connexion</title>
-  <!-- Chargement du SDK Supabase -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-</head>
-<body style="font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh;">
+<script>
+  const SUPABASE_URL = 'https://qvbrezemqpuoreqfghfc.supabase.co'
+  const SUPABASE_KEY = 'sb_publishable_XY3OjGaFASnBuXbWpnGtHw_ojFoUXyb'
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 
-  <form id="loginForm" style="display: flex; flex-direction: column; gap: 10px; width: 300px;">
-    <h2>Connexion</h2>
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault()
     
-    <label>Email :</label>
-    <input type="email" id="email" required style="padding: 8px;">
+    const email = document.getElementById('email').value
+    const password = document.getElementById('password').value
+    const message = document.getElementById('message')
 
-    <label>Mot de passe :</label>
-    <input type="password" id="password" required style="padding: 8px;">
+    message.style.color = 'blue'
+    message.innerText = 'Connexion en cours...'
 
-    <button type="submit" style="padding: 10px; cursor: pointer;">Se connecter</button>
-    <p id="message" style="color: red;"></p>
-  </form>
-
-  <script>
-    // 1. Remplacez par vos clés Supabase
-    const SUPABASE_URL = 'https://qvbrezemqpuoreqfghfc.supabase.co'
-    const SUPABASE_KEY = 'sb_publishable_XY3OjGaFASnBuXbWpnGtHw_ojFoUXyb'
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
-
-    // 2. Gestion de la connexion
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
-      e.preventDefault()
-      
-      const email = document.getElementById('email').value
-      const password = document.getElementById('password').value
-      const message = document.getElementById('message')
-
-      message.style.color = 'black'
-      message.innerText = 'Connexion en cours...'
-
+    try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email,
         password: password,
@@ -45,12 +21,23 @@
 
       if (error) {
         message.style.color = 'red'
-        message.innerText = 'Erreur : ' + error.message
-      } else {
-        // Redirection vers dashboard.html après réussite
-        window.location.href = 'dashboard.html'
+        // Afficher l'erreur exacte renvoyée par Supabase
+        message.innerText = 'Erreur : ' + (error.message === 'Invalid login credentials' 
+          ? 'Identifiants incorrects (Email ou mot de passe faux)' 
+          : error.message)
+      } else if (data.user) {
+        message.style.color = 'green'
+        message.innerText = 'Connexion réussie ! Redirection...'
+        
+        // Petite pause pour s'assurer de l'enregistrement de la session avant de rediriger
+        setTimeout(() => {
+          window.location.href = 'dashboard.html'
+        }, 500)
       }
-    })
-  </script>
-</body>
-</html>
+    } catch (err) {
+      message.style.color = 'red'
+      message.innerText = 'Erreur réseau ou clé Supabase invalide.'
+      console.error(err)
+    }
+  })
+</script>

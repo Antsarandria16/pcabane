@@ -8,14 +8,16 @@
     <!-- Fichier CSS externe -->
     <link rel="stylesheet" href="style.css">
     
-    <!-- SDK Supabase (chargé une seule fois) -->
+    <!-- SDK Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <script>
-        // 1. Déclaration unique du client Supabase
+        // 1. Initialisation unique du client Supabase
         const SUPABASE_URL = 'https://qvbrezemqpuoreqfghfc.supabase.co'
-        const SUPABASE_KEY = 'sb_publishable_XY3OjGaFASnBuXbWpnGtHw_ojFoUXyb' // Remplacez par votre clé anon Supabase
+        const SUPABASE_KEY = 'sb_publishable_XY3OjGaFASnBuXbWpnGtHw_ojFoUXyb'
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+        let currentUser = null;
 
         // 2. Vérification immédiate de la session
         async function checkAuth() {
@@ -24,12 +26,14 @@
             if (!session) {
                 window.location.href = 'login.html'
             } else {
-                // Afficher l'email de l'utilisateur une fois le DOM chargé
+                currentUser = session.user;
                 document.addEventListener('DOMContentLoaded', () => {
                     const emailElement = document.getElementById('userEmail')
                     if (emailElement) {
-                        emailElement.innerText = 'Connecté : ' + session.user.email
+                        emailElement.innerText = 'Connecté : ' + currentUser.email
                     }
+                    // Charger les données dès que la page est prête
+                    chargerProduits()
                 })
             }
         }
@@ -43,12 +47,12 @@
     <aside>
         <div class="logo">Épicerie Manager</div>
         <ul class="menu">
-            <li class="active" onclick="switchTab('caisse')">Caisse / Vente</li>
-            <li onclick="switchTab('stock')">Gestion des Stocks</li>
+            <li class="active" onclick="switchTab('caisse', event)">Caisse / Vente</li>
+            <li onclick="switchTab('stock', event)">Gestion des Stocks</li>
         </ul>
         <div style="padding: 20px 10px;">
             <p id="userEmail" style="font-size: 12px; color: #aaa; margin-bottom: 10px;"></p>
-            <a href="login.html" id="logoutBtn" style="padding: 8px 12px; cursor: pointer; width: 100%;">Déconnexion</a>
+            <button id="logoutBtn" style="padding: 8px 12px; cursor: pointer; width: 100%;">Déconnexion</button>
         </div>
     </aside>
 
@@ -62,12 +66,11 @@
                 <div>
                     <div class="card">
                         <h3>Ajouter un article au panier</h3>
+                        <label for="product-select">Produit :</label>
                         <select id="product-select">
-                            <option value="1" data-price="4000">Lait (4000 ar)</option>
-                            <option value="2" data-price="1000">Pain (1000 ar)</option>
-                            <option value="3" data-price="800">Café (800 ar)</option>
-                            <option value="4" data-price="750">Œufs x6 (750 ar)</option>
+                            <option value="">Chargement des produits...</option>
                         </select>
+                        
                         <label for="quantity">Quantité :</label>
                         <input type="number" id="quantity" value="1" min="1">
                         <button onclick="addToCart()">Ajouter au panier</button>
@@ -85,10 +88,10 @@
                                 </tr>
                             </thead>
                             <tbody id="cart-list">
-                                <!-- Les articles ajoutés s'afficheront ici -->
+                                <!-- Articles affichés ici -->
                             </tbody>
                         </table>
-                        <div class="total-box">Total : <span id="cart-total">0.00</span> ar</div>
+                        <div class="total-box">Total : <span id="cart-total">0.00</span> Ar</div>
                         <button onclick="checkout()" style="width: 100%;">Valider et Encaisser</button>
                     </div>
                 </div>
@@ -105,36 +108,12 @@
                             <thead>
                                 <tr>
                                     <th>Nom</th>
-                                    <th>Catégorie</th>
                                     <th>Prix Unitaire</th>
                                     <th>Stock Restant</th>
                                 </tr>
                             </thead>
                             <tbody id="stock-list">
-                                <tr>
-                                    <td>Lait</td>
-                                    <td>Produits Laitiers</td>
-                                    <td>4000 ar</td>
-                                    <td>45</td>
-                                </tr>
-                                <tr>
-                                    <td>Pain</td>
-                                    <td>Boulangerie</td>
-                                    <td>1000 ar</td>
-                                    <td>12</td>
-                                </tr>
-                                <tr>
-                                    <td>Café</td>
-                                    <td>Épicerie Sèche</td>
-                                    <td>800 ar</td>
-                                    <td>20</td>
-                                </tr>
-                                <tr>
-                                    <td>Œufs x6</td>
-                                    <td>Frais</td>
-                                    <td>750 ar</td>
-                                    <td>30</td>
-                                </tr>
+                                <!-- Produits chargés depuis Supabase -->
                             </tbody>
                         </table>
                     </div>
@@ -142,52 +121,103 @@
                 <div>
                     <div class="card">
                         <h3>Ajouter un nouveau produit</h3>
-                        <label>Nom du produit</label>
+                        <label for="new-name">Nom du produit</label>
                         <input type="text" id="new-name" placeholder="Ex: Fromage">
-                        <label>Catégorie</label>
-                        <input type="text" id="new-cat" placeholder="Ex: Frais">
-                        <label>Prix (ar)</label>
-                        <input type="number" id="new-price" step="0.01" placeholder="300">
-                        <label>Quantité initiale</label>
+                        
+                        <label for="new-price">Prix (Ar)</label>
+                        <input type="number" id="new-price" step="0.01" placeholder="3000">
+                        
+                        <label for="new-stock">Quantité initiale</label>
                         <input type="number" id="new-stock" placeholder="15">
-                        <button onclick="addProduct()">Enregistrer</button>
+                        
+                        <button onclick="addProduct()">Enregistrer dans Supabase</button>
                     </div>
                 </div>
             </div>
         </div>
     </main>
 
-    <!-- Script logique d'interaction et déconnexion -->
+    <!-- Script logique d'interaction et API Supabase -->
     <script>
-        // Déconnexion
+        // Déconnexion propre
         document.getElementById('logoutBtn').addEventListener('click', async () => {
             await supabase.auth.signOut()
             window.location.href = 'login.html'
         })
 
-        // Gestion des onglets
-        function switchTab(tabId) {
+        // Navigations Onglets
+        function switchTab(tabId, evt) {
             document.querySelectorAll('.content').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.menu li').forEach(el => el.classList.remove('active'));
             
             document.getElementById(tabId).classList.add('active');
-            event.currentTarget.classList.add('active');
+            if (evt) evt.currentTarget.classList.add('active');
 
             document.getElementById('header-title').innerText = tabId === 'caisse' ? 'Module Caisse' : 'Module Gestion des Stocks';
         }
 
-        // Logique Caisse
+        // --- CHARGEMENT DYNAMIQUE DEPUIS SUPABASE ---
+        async function chargerProduits() {
+            const { data: produits, error } = await supabase.from('produits').select('*').order('nom', { ascending: true })
+
+            if (error) {
+                console.error("Erreur de chargement des produits :", error)
+                return
+            }
+
+            const select = document.getElementById('product-select')
+            const stockList = document.getElementById('stock-list')
+
+            select.innerHTML = ''
+            stockList.innerHTML = ''
+
+            if (produits.length === 0) {
+                select.innerHTML = '<option value="">Aucun produit disponible</option>'
+                stockList.innerHTML = '<tr><td colspan="3">Aucun produit en stock</td></tr>'
+                return
+            }
+
+            produits.forEach(p => {
+                // Remplir le menu déroulant Caisse
+                const opt = document.createElement('option')
+                opt.value = p.id
+                opt.setAttribute('data-price', p.prix)
+                opt.setAttribute('data-name', p.nom)
+                opt.text = `${p.nom} (${p.prix} Ar)`
+                select.add(opt)
+
+                // Remplir le tableau Stock
+                stockList.innerHTML += `
+                    <tr>
+                        <td>${p.nom}</td>
+                        <td>${p.prix} Ar</td>
+                        <td>${p.stock}</td>
+                    </tr>
+                `
+            })
+        }
+
+        // --- LOGIQUE PANIER ET CAISSE ---
         let cart = [];
         let total = 0;
 
         function addToCart() {
             const select = document.getElementById('product-select');
-            const productName = select.options[select.selectedIndex].text.split(' (')[0];
-            const productPrice = parseFloat(select.options[select.selectedIndex].getAttribute('data-price'));
+            if (!select.value) return;
+
+            const selectedOpt = select.options[select.selectedIndex];
+            const id = selectedOpt.value;
+            const name = selectedOpt.getAttribute('data-name');
+            const unitPrice = parseFloat(selectedOpt.getAttribute('data-price'));
             const qty = parseInt(document.getElementById('quantity').value);
 
-            const itemTotal = productPrice * qty;
-            cart.push({ name: productName, qty: qty, price: itemTotal });
+            if (isNaN(qty) || qty <= 0) {
+                alert("Veuillez saisir une quantité valide.");
+                return;
+            }
+
+            const itemTotal = unitPrice * qty;
+            cart.push({ id, name, qty, unitPrice, price: itemTotal });
             
             updateCartUI();
         }
@@ -199,50 +229,77 @@
 
             cart.forEach(item => {
                 total += item.price;
-                cartList.innerHTML += `<tr><td>${item.name}</td><td>${item.qty}</td><td>${item.price.toFixed(2)} ar</td></tr>`;
+                cartList.innerHTML += `<tr><td>${item.name}</td><td>${item.qty}</td><td>${item.price.toFixed(2)} Ar</td></tr>`;
             });
 
             document.getElementById('cart-total').innerText = total.toFixed(2);
         }
 
-        function checkout() {
-            if(cart.length === 0) {
+        async function checkout() {
+            if (cart.length === 0) {
                 alert("Le panier est vide !");
                 return;
             }
-            alert(`Paiement de ${total.toFixed(2)} ar validé avec succès !`);
+
+            // 1. Enregistrer la vente dans Supabase
+            const { data: vente, error: venteError } = await supabase
+                .from('ventes')
+                .insert([{ total: total, user_id: currentUser.id }])
+                .select()
+                .single()
+
+            if (venteError) {
+                alert("Erreur lors de la validation de la vente : " + venteError.message)
+                return
+            }
+
+            // 2. Enregistrer les détails de la vente
+            const lignes = cart.map(item => ({
+                vente_id: vente.id,
+                produit_id: item.id,
+                quantite: item.qty,
+                prix_unitaire: item.unitPrice,
+                total_ligne: item.price
+            }))
+
+            const { error: lignesError } = await supabase.from('ligne_ventes').insert(lignes)
+
+            if (lignesError) {
+                alert("Erreur lors de l'enregistrement des lignes : " + lignesError.message)
+                return
+            }
+
+            alert(`Vente de ${total.toFixed(2)} Ar validée avec succès !`);
             cart = [];
             updateCartUI();
+            chargerProduits(); // Recharger les produits
         }
 
-        // Logique Stock
-        function addProduct() {
+        // --- LOGIQUE AJOUT PRODUIT EN BASE DE DONNÉES ---
+        async function addProduct() {
             const name = document.getElementById('new-name').value;
-            const cat = document.getElementById('new-cat').value;
-            const price = parseFloat(document.getElementById('new-price').value).toFixed(2);
-            const stock = document.getElementById('new-stock').value;
+            const price = parseFloat(document.getElementById('new-price').value);
+            const stock = parseInt(document.getElementById('new-stock').value);
 
-            if(!name || !cat || isNaN(price) || !stock) {
+            if (!name || isNaN(price) || isNaN(stock)) {
                 alert("Veuillez remplir tous les champs correctement.");
                 return;
             }
 
-            const stockList = document.getElementById('stock-list');
-            stockList.innerHTML += `<tr><td>${name}</td><td>${cat}</td><td>${price} ar</td><td>${stock}</td></tr>`;
+            const { error } = await supabase
+                .from('produits')
+                .insert([{ nom: name, prix: price, stock: stock }])
 
-            const select = document.getElementById('product-select');
-            const opt = document.createElement('option');
-            opt.value = select.options.length + 1;
-            opt.setAttribute('data-price', price);
-            opt.text = `${name} (${price} ar)`;
-            select.add(opt);
-
-            document.getElementById('new-name').value = '';
-            document.getElementById('new-cat').value = '';
-            document.getElementById('new-price').value = '';
-            document.getElementById('new-stock').value = '';
-
-            alert("Produit ajouté avec succès au stock et à la caisse !");
+            if (error) {
+                alert("Erreur lors de l'ajout dans Supabase : " + error.message)
+            } else {
+                alert("Produit ajouté avec succès dans Supabase !");
+                document.getElementById('new-name').value = '';
+                document.getElementById('new-price').value = '';
+                document.getElementById('new-stock').value = '';
+                
+                chargerProduits(); // Mettre à jour l'affichage
+            }
         }
     </script>
 </body>
