@@ -2,7 +2,8 @@
    INITIALISATION & CLIENT SUPABASE
 ========================================================= */
 
-const supabase = window.supabaseClient;
+// ✅ Correct : Utilise une variable 'db' pour vos requêtes Supabase
+const db = window.supabaseClient || (typeof supabase !== 'undefined' ? supabase : null);
 
 let inventory = [];
 let salesHistory = [];
@@ -749,3 +750,30 @@ window.resetStockForm = resetStockForm;
 window.deleteProduct = deleteProduct;
 window.restockProduct = restockProduct;
 window.renderStockTable = renderStockTable;
+/* =========================================================
+   EXPOSITION DES FONCTIONS AU DOM (onclick HTML)
+========================================================= */
+window.toggleSidebar = typeof toggleSidebar !== 'undefined' ? toggleSidebar : function() {
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) sidebar.classList.toggle('sidebar-hidden');
+};
+
+window.switchTab = typeof switchTab !== 'undefined' ? switchTab : function() {};
+window.addToCart = typeof addToCart !== 'undefined' ? addToCart : function() {};
+window.cancelCart = typeof cancelCart !== 'undefined' ? cancelCart : function() {};
+window.checkout = typeof checkout !== 'undefined' ? checkout : function() {};
+window.calculateChange = typeof calculateChange !== 'undefined' ? calculateChange : function() {};
+window.autofillPrice = typeof autofillPrice !== 'undefined' ? autofillPrice : function() {};
+window.saveProduct = typeof saveProduct !== 'undefined' ? saveProduct : function() {};
+window.resetStockForm = typeof resetStockForm !== 'undefined' ? resetStockForm : function() {};
+window.restockProduct = typeof restockProduct !== 'undefined' ? restockProduct : function() {};
+window.handleBulkUpload = typeof handleBulkUpload !== 'undefined' ? handleBulkUpload : function() {};
+window.renderStockTable = typeof renderStockTable !== 'undefined' ? renderStockTable : function() {};
+
+window.logout = async function() {
+    if (db && db.auth) {
+        await db.auth.signOut();
+    }
+    window.location.href = 'index.html';
+};
+
