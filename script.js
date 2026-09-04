@@ -1,30 +1,14 @@
 /* =========================================================
-   DONNÉES
+   INITIALISATION & CLIENT SUPABASE
 ========================================================= */
 
-const STORAGE_INVENTORY = "grocery_inventory";
-const STORAGE_SALES = "grocery_sales";
+const supabase = window.supabaseClient;
 
-let inventory =
-    JSON.parse(localStorage.getItem(STORAGE_INVENTORY)) ||
-    [
-        { name: "Lait", cat: "Produits Laitiers", price: 4000, stock: 45 },
-        { name: "Pain", cat: "Boulangerie", price: 1000, stock: 12 },
-        { name: "Café", cat: "Épicerie Sèche", price: 800, stock: 20 },
-        { name: "Œufs x6", cat: "Frais", price: 750, stock: 3 }
-    ];
-
-let salesHistory =
-    JSON.parse(localStorage.getItem(STORAGE_SALES)) ||
-    [];
-
+let inventory = [];
+let salesHistory = [];
 let cart = [];
 
-/* =========================================================
-   INITIALISATION
-========================================================= */
-
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
     const dateEl = document.getElementById("current-date");
     if (dateEl) {
         dateEl.textContent = new Date().toLocaleDateString(
@@ -33,21 +17,75 @@ window.addEventListener("DOMContentLoaded", () => {
         );
     }
 
-    renderStockTable();
-    updateDatalists();
+    // Chargement initial des données depuis Supabase
+    await loadInventoryFromSupabase();
+    await loadSalesFromSupabase();
+
     updateCartUI();
-    renderSalesHistory();
-    updateDashboard();
-    updateAnalytics();
 });
 
 /* =========================================================
-   SAUVEGARDE
+   CHARGEMENT & SYNCHRONISATION SUPABASE
 ========================================================= */
 
-function saveToStorage() {
-    localStorage.setItem(STORAGE_INVENTORY, JSON.stringify(inventory));
-    localStorage.setItem(STORAGE_SALES, JSON.stringify(salesHistory));
+// Charger la liste des produits depuis Supabase
+async function loadInventoryFromSupabase() {
+    if (!supabase) return;
+
+    const { data, error } = await supabase
+        .from("products")
+        .select("*")
+        .order("name", { ascending: true });
+
+    if (error) {
+        console.error("Erreur de chargement du stock :", error);
+        showNotification("Erreur lors de la récupération des produits.", "error");
+        return;
+    }
+
+    inventory = data.map(item => ({
+        id: item.id,
+        name: item.name,
+        cat: item.category || item.cat || "Épicerie",
+        price: item.price,
+        stock: item.stock
+    }));
+
+    renderStockTable();
+    updateDatalists();
+    updateAnalytics();
+}
+
+// Charger l'historique des ventes depuis Supabase
+async function loadSalesFromSupabase() {
+    if (!supabase) return;
+
+    const { data, error } = await supabase
+        .from("sales")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+    if (error) {
+        console.error("Erreur de chargement des ventes :", error);
+        showNotification("Erreur lors de la récupération de l'historique.", "error");
+        return;
+    }
+
+    salesHistory = data.map(sale => {
+        const dateObj = new Date(sale.created_at || sale.date);
+        return {
+            id: sale.id,
+            date: dateObj.toISOString().split("T")[0],
+            time: dateObj.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+            items: typeof sale.items === "string" ? JSON.parse(sale.items) : (sale.items || []),
+            total: sale.total,
+            received: sale.received || sale.total,
+            change: sale.change_amount || sale.change || 0
+        };
+    });
+
+    renderSalesHistory();
+    updateDashboard();
 }
 
 /* =========================================================
@@ -99,7 +137,7 @@ function switchTab(tabId, element) {
 }
 
 /* =========================================================
-   UTILITAIRES & FORMATAGE
+   UTILITAIRES & NOTIFICATIONS
 ========================================================= */
 
 function formatMoney(value) {
@@ -138,8 +176,17 @@ function showNotification(message, type = 'success') {
     }, 2500);
 }
 
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
 /* =========================================================
-   PRODUIT / PRIX
+   PRODUIT / CAISSE
 ========================================================= */
 
 function autofillPrice() {
@@ -155,10 +202,6 @@ function autofillPrice() {
 
     price.value = product ? product.price : "";
 }
-
-/* =========================================================
-   DATALIST
-========================================================= */
 
 function updateDatalists() {
     const datalist = document.getElementById("products-datalist");
@@ -178,10 +221,6 @@ function updateDatalists() {
         `;
     });
 }
-
-/* =========================================================
-   PANIER
-========================================================= */
 
 function addToCart() {
     const nameInput = document.getElementById("product-name-input");
@@ -224,6 +263,7 @@ function addToCart() {
         existing.qty += qty;
     } else {
         cart.push({
+            id: product.id,
             name: product.name,
             qty: qty,
             unitPrice: product.price
@@ -244,10 +284,6 @@ function clearProductForm() {
     if (priceInput) priceInput.value = "";
     if (qtyInput) qtyInput.value = 1;
 }
-
-/* =========================================================
-   AFFICHAGE PANIER
-========================================================= */
 
 function updateCartUI() {
     const list = document.getElementById("cart-list");
@@ -286,10 +322,6 @@ function getCartTotal() {
     return cart.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0);
 }
 
-/* =========================================================
-   QUANTITÉ PANIER
-========================================================= */
-
 function changeCartQuantity(index, amount) {
     const item = cart[index];
     if (!item) return;
@@ -318,10 +350,6 @@ function removeFromCart(index) {
     updateCartUI();
 }
 
-/* =========================================================
-   MONNAIE
-========================================================= */
-
 function calculateChange() {
     const total = getCartTotal();
     const receivedEl = document.getElementById("amount-received");
@@ -334,69 +362,6 @@ function calculateChange() {
         changeEl.textContent = formatMoney(change >= 0 ? change : 0).replace(" Ar", "");
     }
 }
-
-/* =========================================================
-   ENCAISSEMENT
-========================================================= */
-
-function checkout() {
-    if (cart.length === 0) {
-        showNotification("Le panier est vide.", "error");
-        return;
-    }
-
-    const total = getCartTotal();
-    const receivedEl = document.getElementById("amount-received");
-    const received = parseFloat(receivedEl ? receivedEl.value : 0) || 0;
-
-    if (received < total) {
-        showNotification("Montant reçu insuffisant.", "error");
-        return;
-    }
-
-    for (const cartItem of cart) {
-        const product = inventory.find(p => p.name.toLowerCase() === cartItem.name.toLowerCase());
-        if (!product || product.stock < cartItem.qty) {
-            showNotification(`Stock insuffisant pour ${cartItem.name}.`, "error");
-            return;
-        }
-    }
-
-    cart.forEach(cartItem => {
-        const product = inventory.find(p => p.name.toLowerCase() === cartItem.name.toLowerCase());
-        product.stock -= cartItem.qty;
-    });
-
-    const now = new Date();
-    const sale = {
-        id: Date.now(),
-        date: now.toISOString().split("T")[0],
-        time: now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-        items: cart.map(item => ({ name: item.name, qty: item.qty, unitPrice: item.unitPrice })),
-        total: total,
-        received: received,
-        change: received - total
-    };
-
-    salesHistory.unshift(sale);
-    saveToStorage();
-
-    showNotification("Vente validée avec succès !", "success");
-
-    cart = [];
-    if (receivedEl) receivedEl.value = "";
-
-    updateCartUI();
-    renderStockTable();
-    updateDatalists();
-    renderSalesHistory();
-    updateDashboard();
-    updateAnalytics();
-}
-
-/* =========================================================
-   ANNULATION PANIER
-========================================================= */
 
 function cancelCart() {
     if (cart.length === 0) return;
@@ -412,7 +377,81 @@ function cancelCart() {
 }
 
 /* =========================================================
-   STOCK
+   ENCAISSEMENT AVEC SUPABASE
+========================================================= */
+
+async function checkout() {
+    if (cart.length === 0) {
+        showNotification("Le panier est vide.", "error");
+        return;
+    }
+
+    const total = getCartTotal();
+    const receivedEl = document.getElementById("amount-received");
+    const received = parseFloat(receivedEl ? receivedEl.value : 0) || 0;
+
+    if (received < total) {
+        showNotification("Montant reçu insuffisant.", "error");
+        return;
+    }
+
+    // 1. Vérifier la disponibilité en stock
+    for (const cartItem of cart) {
+        const product = inventory.find(p => p.name.toLowerCase() === cartItem.name.toLowerCase());
+        if (!product || product.stock < cartItem.qty) {
+            showNotification(`Stock insuffisant pour ${cartItem.name}.`, "error");
+            return;
+        }
+    }
+
+    // 2. Mettre à jour le stock dans Supabase
+    for (const cartItem of cart) {
+        const product = inventory.find(p => p.name.toLowerCase() === cartItem.name.toLowerCase());
+        const newStock = product.stock - cartItem.qty;
+
+        if (product.id) {
+            const { error: stockError } = await supabase
+                .from("products")
+                .update({ stock: newStock })
+                .eq("id", product.id);
+
+            if (stockError) {
+                console.error("Erreur de mise à jour du stock :", stockError);
+            }
+        }
+    }
+
+    // 3. Enregistrer la vente dans la table "sales"
+    const salePayload = {
+        total: total,
+        received: received,
+        change_amount: received - total,
+        items: JSON.stringify(cart.map(item => ({ name: item.name, qty: item.qty, unitPrice: item.unitPrice }))),
+        created_at: new Date().toISOString()
+    };
+
+    const { error: saleError } = await supabase
+        .from("sales")
+        .insert([salePayload]);
+
+    if (saleError) {
+        console.error("Erreur enregistrement vente :", saleError);
+        showNotification("Erreur lors de la sauvegarde de la vente sur Supabase.", "error");
+        return;
+    }
+
+    showNotification("Vente validée avec succès !", "success");
+
+    cart = [];
+    if (receivedEl) receivedEl.value = "";
+
+    // Recharger la vue mise à jour depuis Supabase
+    await loadInventoryFromSupabase();
+    await loadSalesFromSupabase();
+}
+
+/* =========================================================
+   GESTION DES STOCKS AVEC SUPABASE
 ========================================================= */
 
 function renderStockTable() {
@@ -448,11 +487,7 @@ function renderStockTable() {
     updateLowStock();
 }
 
-/* =========================================================
-   AJOUT / MODIFICATION PRODUIT
-========================================================= */
-
-function saveProduct() {
+async function saveProduct() {
     const name = document.getElementById("new-name").value.trim();
     const cat = document.getElementById("new-cat").value.trim();
     const price = parseFloat(document.getElementById("new-price").value);
@@ -464,41 +499,41 @@ function saveProduct() {
         return;
     }
 
-    if (Number.isNaN(price) || price < 0) {
-        showNotification("Prix invalide.", "error");
+    if (Number.isNaN(price) || price < 0 || Number.isNaN(stock) || stock < 0) {
+        showNotification("Prix ou stock invalide.", "error");
         return;
     }
-
-    if (Number.isNaN(stock) || stock < 0) {
-        showNotification("Stock invalide.", "error");
-        return;
-    }
-
-    const duplicate = inventory.findIndex(
-        (item, index) => index !== editIndex && item.name.toLowerCase() === name.toLowerCase()
-    );
-
-    if (duplicate !== -1) {
-        showNotification("Ce produit existe déjà.", "error");
-        return;
-    }
-
-    const product = { name, cat, price, stock };
 
     if (editIndex === -1) {
-        inventory.push(product);
+        // Ajout dans Supabase
+        const { error } = await supabase
+            .from("products")
+            .insert([{ name, category: cat, price, stock }]);
+
+        if (error) {
+            console.error("Erreur d'ajout Supabase :", error);
+            showNotification("Erreur lors de l'ajout du produit.", "error");
+            return;
+        }
         showNotification("Produit ajouté avec succès", "success");
     } else {
-        inventory[editIndex] = product;
+        // Modification dans Supabase
+        const existingProduct = inventory[editIndex];
+        const { error } = await supabase
+            .from("products")
+            .update({ name, category: cat, price, stock })
+            .eq("id", existingProduct.id);
+
+        if (error) {
+            console.error("Erreur de modification Supabase :", error);
+            showNotification("Erreur lors de la mise à jour.", "error");
+            return;
+        }
         showNotification("Produit mis à jour", "success");
     }
 
-    saveToStorage();
     resetStockForm();
-    renderStockTable();
-    updateDatalists();
-    updateDashboard();
-    updateAnalytics();
+    await loadInventoryFromSupabase();
 }
 
 function editProduct(index) {
@@ -528,37 +563,28 @@ function resetStockForm() {
     document.getElementById("cancel-btn").style.display = "none";
 }
 
-/* =========================================================
-   SUPPRESSION PRODUIT
-========================================================= */
-
-function deleteProduct(index) {
+async function deleteProduct(index) {
     const product = inventory[index];
     if (!product) return;
 
-    const usedInCart = cart.some(item => item.name.toLowerCase() === product.name.toLowerCase());
+    if (!confirm(`Supprimer définitivement "${product.name}" ?`)) return;
 
-    if (usedInCart) {
-        showNotification("Impossible : le produit est dans le panier.", "error");
+    const { error } = await supabase
+        .from("products")
+        .delete()
+        .eq("id", product.id);
+
+    if (error) {
+        console.error("Erreur de suppression :", error);
+        showNotification("Erreur lors de la suppression.", "error");
         return;
     }
 
-    if (!confirm(`Supprimer définitivement "${product.name}" ?`)) return;
-
-    inventory.splice(index, 1);
-    saveToStorage();
-    renderStockTable();
-    updateDatalists();
-    updateDashboard();
-    updateAnalytics();
     showNotification("Produit supprimé", "info");
+    await loadInventoryFromSupabase();
 }
 
-/* =========================================================
-   APPROVISIONNEMENT
-========================================================= */
-
-function restockProduct() {
+async function restockProduct() {
     const index = parseInt(document.getElementById("restock-select").value);
     const quantity = parseInt(document.getElementById("restock-qty").value);
 
@@ -567,20 +593,24 @@ function restockProduct() {
         return;
     }
 
-    inventory[index].stock += quantity;
+    const product = inventory[index];
+    const updatedStock = product.stock + quantity;
+
+    const { error } = await supabase
+        .from("products")
+        .update({ stock: updatedStock })
+        .eq("id", product.id);
+
+    if (error) {
+        console.error("Erreur réapprovisionnement :", error);
+        showNotification("Erreur lors du réapprovisionnement.", "error");
+        return;
+    }
+
     document.getElementById("restock-qty").value = "";
-
-    saveToStorage();
-    renderStockTable();
-    updateDatalists();
-    updateDashboard();
-    updateAnalytics();
     showNotification("Approvisionnement effectué avec succès", "success");
+    await loadInventoryFromSupabase();
 }
-
-/* =========================================================
-   STOCK FAIBLE
-========================================================= */
 
 function updateLowStock() {
     const container = document.getElementById("low-stock-list");
@@ -601,94 +631,7 @@ function updateLowStock() {
 }
 
 /* =========================================================
-   IMPORT CSV
-========================================================= */
-
-function handleBulkUpload() {
-    const input = document.getElementById("csv-file-input");
-    const file = input ? input.files[0] : null;
-
-    if (!file) {
-        showNotification("Veuillez sélectionner un fichier CSV.", "error");
-        return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = function(event) {
-        const text = event.target.result;
-        const lines = text.replace(/\r/g, "").split("\n");
-        let imported = 0;
-        let rejected = 0;
-
-        lines.forEach((line, index) => {
-            if (!line.trim()) return;
-            if (index === 0 && line.toLowerCase().includes("nom")) return;
-
-            const columns = parseCSVLine(line);
-            if (columns.length < 4) {
-                rejected++;
-                return;
-            }
-
-            const name = columns[0].trim();
-            const cat = columns[1].trim();
-            const price = parseFloat(columns[2].replace(",", "."));
-            const stock = parseInt(columns[3]);
-
-            if (!name || !cat || Number.isNaN(price) || Number.isNaN(stock) || price < 0 || stock < 0) {
-                rejected++;
-                return;
-            }
-
-            const existing = inventory.find(item => item.name.toLowerCase() === name.toLowerCase());
-
-            if (existing) {
-                existing.price = price;
-                existing.cat = cat;
-                existing.stock += stock;
-            } else {
-                inventory.push({ name, cat, price, stock });
-            }
-            imported++;
-        });
-
-        saveToStorage();
-        renderStockTable();
-        updateDatalists();
-        updateDashboard();
-        updateAnalytics();
-
-        showNotification(`Import terminé : ${imported} traités, ${rejected} rejetés.`, "success");
-        input.value = "";
-    };
-
-    reader.readAsText(file);
-}
-
-function parseCSVLine(line) {
-    const result = [];
-    let current = "";
-    let insideQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        if (char === '"') {
-            insideQuotes = !insideQuotes;
-            continue;
-        }
-        if (char === "," && !insideQuotes) {
-            result.push(current);
-            current = "";
-        } else {
-            current += char;
-        }
-    }
-    result.push(current);
-    return result;
-}
-
-/* =========================================================
-   HISTORIQUE & ANALYTIQUE
+   ANALYTES ET RAPPORTS
 ========================================================= */
 
 function renderSalesHistory() {
@@ -788,14 +731,21 @@ function formatDate(dateString) {
 }
 
 /* =========================================================
-   SÉCURITÉ HTML
+   EXPOSITION GLOBALE
 ========================================================= */
 
-function escapeHtml(value) {
-    return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-}
+window.toggleSidebar = toggleSidebar;
+window.switchTab = switchTab;
+window.autofillPrice = autofillPrice;
+window.addToCart = addToCart;
+window.changeCartQuantity = changeCartQuantity;
+window.removeFromCart = removeFromCart;
+window.calculateChange = calculateChange;
+window.checkout = checkout;
+window.cancelCart = cancelCart;
+window.saveProduct = saveProduct;
+window.editProduct = editProduct;
+window.resetStockForm = resetStockForm;
+window.deleteProduct = deleteProduct;
+window.restockProduct = restockProduct;
+window.renderStockTable = renderStockTable;
