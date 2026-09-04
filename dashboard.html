@@ -348,7 +348,7 @@
         </div>
     </section>
 
-    <!-- NOUVELLE SECTION HISTORIQUE STOCK -->
+    <!-- SECTION HISTORIQUE STOCK -->
     <section id="historique-stock" class="content">
         <div class="card">
             <h3><span>📋</span> Historique des mouvements de stock</h3>
@@ -425,20 +425,29 @@
         </div>
     </section>
 </main>
+
 <!-- SDK Supabase JS -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-<!-- Initialisation du client Supabase -->
+<!-- Initialisation du client Supabase & Gardien d'authentification -->
 <script>
- const SUPABASE_URL = 'https://qvbrezemqpuoreqfghfc.supabase.co';
+    const SUPABASE_URL = 'https://qvbrezemqpuoreqfghfc.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_XY3OjGaFASnBuXbWpnGtHw_ojFoUXyb';
-  window.supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    
+    window.supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // Vérification de l'accès (Redirige si non connecté)
+    async function verifierAcces() {
+        const { data } = await window.supabaseClient.auth.getSession();
+        if (!data || !data.session) {
+            window.location.href = 'index.html';
+        }
+    }
+    verifierAcces();
 </script>
 
-<!-- Votre script principal -->
+<!-- Script principal -->
 <script src="script.js"></script>
-    <script src="script.js"></script>
-</body>
-</html>
+
 </body>
 </html>
