@@ -2,14 +2,19 @@
    INITIALISATION & CLIENT SUPABASE
 ========================================================= */
 
-// Utilisation du client Supabase initialisé dans le HTML
-const supabase = window.supabaseClient;
+// Récupération de l'instance Supabase sans utiliser 'const supabase' pour éviter les conflits de re-déclaration
+var supabase = window.supabaseClient || window.supabase;
 
 let inventory = [];
 let salesHistory = [];
 let cart = [];
 
 window.addEventListener("DOMContentLoaded", async () => {
+    // S'assurer que le client Supabase est bien assigné
+    if (!supabase && window.supabaseClient) {
+        supabase = window.supabaseClient;
+    }
+
     const dateEl = document.getElementById("current-date");
     if (dateEl) {
         dateEl.textContent = new Date().toLocaleDateString(
@@ -32,7 +37,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 // Charger la liste des produits depuis Supabase
 async function loadInventoryFromSupabase() {
     if (!supabase) {
-        console.error("Client Supabase introuvable sur window.supabaseClient");
+        console.error("Client Supabase introuvable.");
         return;
     }
 
@@ -756,7 +761,7 @@ function formatDate(dateString) {
 }
 
 /* =========================================================
-   ATTACHEMENT GLOBAL DÉFINITIF POUR LES BOUTONS (window)
+   ATTACHEMENT GLOBAL POUR LES BOUTONS
 ========================================================= */
 
 window.toggleSidebar = toggleSidebar;
