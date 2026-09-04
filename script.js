@@ -25,11 +25,13 @@ let cart = [];
 ========================================================= */
 
 window.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("current-date").textContent =
-        new Date().toLocaleDateString(
+    const dateEl = document.getElementById("current-date");
+    if (dateEl) {
+        dateEl.textContent = new Date().toLocaleDateString(
             "fr-FR",
             { weekday: "long", year: "numeric", month: "long", day: "numeric" }
         );
+    }
 
     renderStockTable();
     updateDatalists();
@@ -54,6 +56,7 @@ function saveToStorage() {
 
 function toggleSidebar() {
     const sidebar = document.getElementById("sidebar");
+    if (!sidebar) return;
     sidebar.classList.toggle("sidebar-hidden");
     sidebar.classList.toggle("sidebar-visible");
 }
@@ -67,8 +70,9 @@ function switchTab(tabId, element) {
         item.classList.remove("active");
     });
 
-    document.getElementById(tabId).classList.add("active");
-    element.classList.add("active");
+    const target = document.getElementById(tabId);
+    if (target) target.classList.add("active");
+    if (element) element.classList.add("active");
 
     const titles = {
         dashboard: "Tableau de bord",
@@ -78,11 +82,16 @@ function switchTab(tabId, element) {
         historique: "Historique des Ventes"
     };
 
-    document.getElementById("header-title").textContent = titles[tabId];
+    const headerTitle = document.getElementById("header-title");
+    if (headerTitle && titles[tabId]) {
+        headerTitle.textContent = titles[tabId];
+    }
 
     const sidebar = document.getElementById("sidebar");
-    sidebar.classList.remove("sidebar-visible");
-    sidebar.classList.add("sidebar-hidden");
+    if (sidebar) {
+        sidebar.classList.remove("sidebar-visible");
+        sidebar.classList.add("sidebar-hidden");
+    }
 
     if (tabId === 'analytique') {
         updateAnalytics();
@@ -100,7 +109,6 @@ function formatMoney(value) {
     ) + " Ar";
 }
 
-// Système de notification élégant intégré au header
 function showNotification(message, type = 'success') {
     const container = document.getElementById('toast-container');
     if (!container) return;
@@ -137,17 +145,15 @@ function showNotification(message, type = 'success') {
 function autofillPrice() {
     const input = document.getElementById("product-name-input");
     const price = document.getElementById("product-price-input");
+    if (!input || !price) return;
+
     const name = input.value.trim().toLowerCase();
 
     const product = inventory.find(
         item => item.name.toLowerCase() === name
     );
 
-    if (product) {
-        price.value = product.price;
-    } else {
-        price.value = "";
-    }
+    price.value = product ? product.price : "";
 }
 
 /* =========================================================
@@ -178,8 +184,11 @@ function updateDatalists() {
 ========================================================= */
 
 function addToCart() {
-    const name = document.getElementById("product-name-input").value.trim();
-    const qty = parseInt(document.getElementById("quantity").value);
+    const nameInput = document.getElementById("product-name-input");
+    const qtyInput = document.getElementById("quantity");
+
+    const name = nameInput ? nameInput.value.trim() : "";
+    const qty = parseInt(qtyInput ? qtyInput.value : 1);
 
     if (!name) {
         showNotification("Veuillez sélectionner un produit.", "error");
@@ -227,9 +236,13 @@ function addToCart() {
 }
 
 function clearProductForm() {
-    document.getElementById("product-name-input").value = "";
-    document.getElementById("product-price-input").value = "";
-    document.getElementById("quantity").value = 1;
+    const nameInput = document.getElementById("product-name-input");
+    const priceInput = document.getElementById("product-price-input");
+    const qtyInput = document.getElementById("quantity");
+
+    if (nameInput) nameInput.value = "";
+    if (priceInput) priceInput.value = "";
+    if (qtyInput) qtyInput.value = 1;
 }
 
 /* =========================================================
@@ -263,7 +276,9 @@ function updateCartUI() {
         `;
     });
 
-    document.getElementById("cart-total").textContent = formatMoney(total).replace(" Ar", "");
+    const totalEl = document.getElementById("cart-total");
+    if (totalEl) totalEl.textContent = formatMoney(total).replace(" Ar", "");
+
     calculateChange();
 }
 
@@ -277,8 +292,9 @@ function getCartTotal() {
 
 function changeCartQuantity(index, amount) {
     const item = cart[index];
-    const product = inventory.find(p => p.name.toLowerCase() === item.name.toLowerCase());
+    if (!item) return;
 
+    const product = inventory.find(p => p.name.toLowerCase() === item.name.toLowerCase());
     if (!product) return;
 
     const newQty = item.qty + amount;
@@ -308,10 +324,15 @@ function removeFromCart(index) {
 
 function calculateChange() {
     const total = getCartTotal();
-    const received = parseFloat(document.getElementById("amount-received").value) || 0;
+    const receivedEl = document.getElementById("amount-received");
+    const changeEl = document.getElementById("amount-change");
+
+    const received = parseFloat(receivedEl ? receivedEl.value : 0) || 0;
     const change = received - total;
 
-    document.getElementById("amount-change").textContent = formatMoney(change >= 0 ? change : 0).replace(" Ar", "");
+    if (changeEl) {
+        changeEl.textContent = formatMoney(change >= 0 ? change : 0).replace(" Ar", "");
+    }
 }
 
 /* =========================================================
@@ -325,7 +346,8 @@ function checkout() {
     }
 
     const total = getCartTotal();
-    const received = parseFloat(document.getElementById("amount-received").value) || 0;
+    const receivedEl = document.getElementById("amount-received");
+    const received = parseFloat(receivedEl ? receivedEl.value : 0) || 0;
 
     if (received < total) {
         showNotification("Montant reçu insuffisant.", "error");
@@ -362,7 +384,7 @@ function checkout() {
     showNotification("Vente validée avec succès !", "success");
 
     cart = [];
-    document.getElementById("amount-received").value = "";
+    if (receivedEl) receivedEl.value = "";
 
     updateCartUI();
     renderStockTable();
@@ -381,7 +403,9 @@ function cancelCart() {
 
     if (confirm("Voulez-vous vraiment annuler le panier en cours ?")) {
         cart = [];
-        document.getElementById("amount-received").value = "";
+        const receivedEl = document.getElementById("amount-received");
+        if (receivedEl) receivedEl.value = "";
+        
         updateCartUI();
         showNotification("Panier annulé", "info");
     }
@@ -395,7 +419,8 @@ function renderStockTable() {
     const list = document.getElementById("stock-list");
     if (!list) return;
 
-    const search = (document.getElementById("stock-search")?.value || "").trim().toLowerCase();
+    const searchInput = document.getElementById("stock-search");
+    const search = (searchInput ? searchInput.value : "").trim().toLowerCase();
 
     list.innerHTML = "";
 
@@ -478,6 +503,7 @@ function saveProduct() {
 
 function editProduct(index) {
     const item = inventory[index];
+    if (!item) return;
 
     document.getElementById("new-name").value = item.name;
     document.getElementById("new-cat").value = item.cat;
@@ -508,6 +534,8 @@ function resetStockForm() {
 
 function deleteProduct(index) {
     const product = inventory[index];
+    if (!product) return;
+
     const usedInCart = cart.some(item => item.name.toLowerCase() === product.name.toLowerCase());
 
     if (usedInCart) {
@@ -534,7 +562,7 @@ function restockProduct() {
     const index = parseInt(document.getElementById("restock-select").value);
     const quantity = parseInt(document.getElementById("restock-qty").value);
 
-    if (Number.isNaN(index) || Number.isNaN(quantity) || quantity <= 0) {
+    if (Number.isNaN(index) || Number.isNaN(quantity) || quantity <= 0 || !inventory[index]) {
         showNotification("Veuillez saisir une quantité valide.", "error");
         return;
     }
@@ -578,7 +606,7 @@ function updateLowStock() {
 
 function handleBulkUpload() {
     const input = document.getElementById("csv-file-input");
-    const file = input.files[0];
+    const file = input ? input.files[0] : null;
 
     if (!file) {
         showNotification("Veuillez sélectionner un fichier CSV.", "error");
@@ -771,10 +799,3 @@ function escapeHtml(value) {
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
 }
-
-
-window.cancelCart = function() {
-    cart = [];
-    document.getElementById('amount-received').value = '';
-    renderCart();
-};
