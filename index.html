@@ -62,21 +62,22 @@
     <p id="message"></p>
   </div>
 
-  <!-- Importation directe via ESM Module pour Vercel -->
-  <script type="module">
-    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
-
+  <!-- Chargement du SDK Supabase UMD -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+  <script>
     const SUPABASE_URL = 'https://qvbrezemqpuoreqfghfc.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_XY3OjGaFASnBuXbWpnGtHw_ojFoUXyb';
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    // Initialisation globale
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // Vérifier la session déjà active
+    // Vérification de la session active
     async function verifierSession() {
       try {
-        const { data } = await supabase.auth.getSession();
+        const { data } = await supabaseClient.auth.getSession();
         if (data && data.session) {
-          window.location.href = 'dashboard.html';
+          window.location.href = '../../dashboard.html';
         }
       } catch (e) {
         console.error('Erreur session:', e);
@@ -84,7 +85,7 @@
     }
     verifierSession();
 
-    // Attacher l'événement au bouton
+    // Gestion du clic de connexion
     document.getElementById('btnConnecter').addEventListener('click', async () => {
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value.trim();
@@ -100,7 +101,7 @@
       message.innerText = 'Envoi de la requête...';
 
       try {
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabaseClient.auth.signInWithPassword({
           email: email,
           password: password,
         });
@@ -112,7 +113,8 @@
           message.style.color = 'green';
           message.innerText = 'Connexion réussie ! Redirection...';
           setTimeout(() => {
-            window.location.href = 'dashboard.html';
+            // Redirection vers dashboard.html selon l'emplacement de votre fichier index.html
+            window.location.href = '../../dashboard.html';
           }, 500);
         }
       } catch (err) {
