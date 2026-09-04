@@ -34,7 +34,7 @@ window.addEventListener("DOMContentLoaded", async () => {
    CHARGEMENT & SYNCHRONISATION SUPABASE
 ========================================================= */
 
-// Charger la liste des produits depuis Supabase
+// Charger la liste des produits depuis Supabase (Table 'produits')
 async function loadInventoryFromSupabase() {
     if (!supabase) {
         console.error("Client Supabase introuvable.");
@@ -42,9 +42,9 @@ async function loadInventoryFromSupabase() {
     }
 
     const { data, error } = await supabase
-        .from("products")
+        .from("produits")
         .select("*")
-        .order("name", { ascending: true });
+        .order("nom", { ascending: true });
 
     if (error) {
         console.error("Erreur de chargement du stock :", error);
@@ -54,10 +54,10 @@ async function loadInventoryFromSupabase() {
 
     inventory = (data || []).map(item => ({
         id: item.id,
-        name: item.name,
-        cat: item.category || item.cat || "Épicerie",
-        price: item.price,
-        stock: item.stock
+        name: item.nom,
+        cat: item.category_id || "Général",
+        price: item.prix,
+        stock: item.stock || 0
     }));
 
     renderStockTable();
@@ -65,12 +65,12 @@ async function loadInventoryFromSupabase() {
     updateAnalytics();
 }
 
-// Charger l'historique des ventes depuis Supabase
+// Charger l'historique des ventes depuis Supabase (Table 'ventes')
 async function loadSalesFromSupabase() {
     if (!supabase) return;
 
     const { data, error } = await supabase
-        .from("sales")
+        .from("ventes")
         .select("*")
         .order("created_at", { ascending: false });
 
@@ -412,13 +412,14 @@ async function checkout() {
         }
     }
 
+    // Mise à jour des stocks dans 'produits'
     for (const cartItem of cart) {
         const product = inventory.find(p => p.name.toLowerCase() === cartItem.name.toLowerCase());
         const newStock = product.stock - cartItem.qty;
 
         if (product.id) {
             const { error: stockError } = await supabase
-                .from("products")
+                .from("produits")
                 .update({ stock: newStock })
                 .eq("id", product.id);
 
@@ -428,6 +429,7 @@ async function checkout() {
         }
     }
 
+    // Enregistrement de la vente dans 'ventes'
     const salePayload = {
         total: total,
         received: received,
@@ -436,14 +438,28 @@ async function checkout() {
         created_at: new Date().toISOString()
     };
 
-    const { error: saleError } = await supabase
-        .from("sales")
-        .insert([salePayload]);
+    const { data: insertedSale, error: saleError } = await supabase
+        .from("ventes")
+        .insert([salePayload])
+        .select();
 
     if (saleError) {
         console.error("Erreur enregistrement vente :", saleError);
         showNotification("Erreur lors de la sauvegarde de la vente sur Supabase.", "error");
         return;
+    }
+
+    // Optionnel : Insérer les détails dans 'ligne_ventes' si la table existe
+    if (insertedSale && insertedSale.length > 0) {
+        const venteId = insertedSale[0].id;
+        const ligneVentesPayload = cart.map(item => ({
+            vente_id: venteId,
+            produit_id: item.id,
+            quantite: item.qty,
+            prix_unitaire: item.unitPrice
+        }));
+
+        await supabase.from("ligne_ventes").insert(ligneVentesPayload);
     }
 
     showNotification("Vente validée avec succès !", "success");
@@ -507,8 +523,8 @@ async function saveProduct() {
     const stock = parseInt(stockInput.value);
     const editIndex = parseInt(editIndexInput ? editIndexInput.value : -1);
 
-    if (!name || !cat) {
-        showNotification("Le nom et la catégorie sont obligatoires.", "error");
+    if (!name) {
+        showNotification("Le nom du produit est obligatoire.", "error");
         return;
     }
 
@@ -518,9 +534,10 @@ async function saveProduct() {
     }
 
     if (editIndex === -1) {
+        // Ajout dans 'produits'
         const { error } = await supabase
-            .from("products")
-            .insert([{ name, category: cat, price, stock }]);
+            .from("produits")
+            .insert([{ nom: name, category_id: parseInt(cat) || null, prix: price, stock: stock }]);
 
         if (error) {
             console.error("Erreur d'ajout Supabase :", error);
@@ -529,10 +546,11 @@ async function saveProduct() {
         }
         showNotification("Produit ajouté avec succès", "success");
     } else {
+        // Mettre à jour dans 'produits'
         const existingProduct = inventory[editIndex];
         const { error } = await supabase
-            .from("products")
-            .update({ name, category: cat, price, stock })
+            .from("produits")
+            .update({ nom: name, category_id: parseInt(cat) || null, prix: price, stock: stock })
             .eq("id", existingProduct.id);
 
         if (error) {
@@ -595,7 +613,7 @@ async function deleteProduct(index) {
     if (!confirm(`Supprimer définitivement "${product.name}" ?`)) return;
 
     const { error } = await supabase
-        .from("products")
+        .from("produits")
         .delete()
         .eq("id", product.id);
 
@@ -627,7 +645,7 @@ async function restockProduct() {
     const updatedStock = product.stock + quantity;
 
     const { error } = await supabase
-        .from("products")
+        .from("produits")
         .update({ stock: updatedStock })
         .eq("id", product.id);
 
