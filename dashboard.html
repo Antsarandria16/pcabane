@@ -425,7 +425,18 @@
         </div>
     </section>
 </main>
+<!-- SDK Supabase JS -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
+<!-- Initialisation du client Supabase -->
+<script>
+  const SUPABASE_URL = "https://votre-projet.supabase.co"; // Remplacez par votre URL Supabase
+  const SUPABASE_KEY = "votre-cle-anon-supabase";         // Remplacez par votre clé anon Supabase
+  window.supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+</script>
+
+<!-- Votre script principal -->
+<script src="script.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
