@@ -2,8 +2,8 @@
    INITIALISATION & CLIENT SUPABASE
 ========================================================= */
 
-// ✅ Correct : Utilise une variable 'db' pour vos requêtes Supabase
-const db = window.supabaseClient || (typeof supabase !== 'undefined' ? supabase : null);
+// Utilisation du client Supabase initialisé dans le HTML
+const supabase = window.supabaseClient;
 
 let inventory = [];
 let salesHistory = [];
@@ -31,7 +31,10 @@ window.addEventListener("DOMContentLoaded", async () => {
 
 // Charger la liste des produits depuis Supabase
 async function loadInventoryFromSupabase() {
-    if (!supabase) return;
+    if (!supabase) {
+        console.error("Client Supabase introuvable sur window.supabaseClient");
+        return;
+    }
 
     const { data, error } = await supabase
         .from("products")
@@ -44,7 +47,7 @@ async function loadInventoryFromSupabase() {
         return;
     }
 
-    inventory = data.map(item => ({
+    inventory = (data || []).map(item => ({
         id: item.id,
         name: item.name,
         cat: item.category || item.cat || "Épicerie",
@@ -72,7 +75,7 @@ async function loadSalesFromSupabase() {
         return;
     }
 
-    salesHistory = data.map(sale => {
+    salesHistory = (data || []).map(sale => {
         const dateObj = new Date(sale.created_at || sale.date);
         return {
             id: sale.id,
@@ -396,7 +399,6 @@ async function checkout() {
         return;
     }
 
-    // 1. Vérifier la disponibilité en stock
     for (const cartItem of cart) {
         const product = inventory.find(p => p.name.toLowerCase() === cartItem.name.toLowerCase());
         if (!product || product.stock < cartItem.qty) {
@@ -405,7 +407,6 @@ async function checkout() {
         }
     }
 
-    // 2. Mettre à jour le stock dans Supabase
     for (const cartItem of cart) {
         const product = inventory.find(p => p.name.toLowerCase() === cartItem.name.toLowerCase());
         const newStock = product.stock - cartItem.qty;
@@ -422,7 +423,6 @@ async function checkout() {
         }
     }
 
-    // 3. Enregistrer la vente dans la table "sales"
     const salePayload = {
         total: total,
         received: received,
@@ -446,7 +446,6 @@ async function checkout() {
     cart = [];
     if (receivedEl) receivedEl.value = "";
 
-    // Recharger la vue mise à jour depuis Supabase
     await loadInventoryFromSupabase();
     await loadSalesFromSupabase();
 }
@@ -506,7 +505,6 @@ async function saveProduct() {
     }
 
     if (editIndex === -1) {
-        // Ajout dans Supabase
         const { error } = await supabase
             .from("products")
             .insert([{ name, category: cat, price, stock }]);
@@ -518,7 +516,6 @@ async function saveProduct() {
         }
         showNotification("Produit ajouté avec succès", "success");
     } else {
-        // Modification dans Supabase
         const existingProduct = inventory[editIndex];
         const { error } = await supabase
             .from("products")
@@ -632,7 +629,7 @@ function updateLowStock() {
 }
 
 /* =========================================================
-   ANALYTES ET RAPPORTS
+   ANALYTIQUES ET RAPPORTS
 ========================================================= */
 
 function renderSalesHistory() {
@@ -732,7 +729,7 @@ function formatDate(dateString) {
 }
 
 /* =========================================================
-   EXPOSITION GLOBALE
+   EXPOSITION GLOBALE DES FONCTIONS (onclick HTML)
 ========================================================= */
 
 window.toggleSidebar = toggleSidebar;
@@ -750,30 +747,10 @@ window.resetStockForm = resetStockForm;
 window.deleteProduct = deleteProduct;
 window.restockProduct = restockProduct;
 window.renderStockTable = renderStockTable;
-/* =========================================================
-   EXPOSITION DES FONCTIONS AU DOM (onclick HTML)
-========================================================= */
-window.toggleSidebar = typeof toggleSidebar !== 'undefined' ? toggleSidebar : function() {
-    const sidebar = document.getElementById('sidebar');
-    if (sidebar) sidebar.classList.toggle('sidebar-hidden');
-};
-
-window.switchTab = typeof switchTab !== 'undefined' ? switchTab : function() {};
-window.addToCart = typeof addToCart !== 'undefined' ? addToCart : function() {};
-window.cancelCart = typeof cancelCart !== 'undefined' ? cancelCart : function() {};
-window.checkout = typeof checkout !== 'undefined' ? checkout : function() {};
-window.calculateChange = typeof calculateChange !== 'undefined' ? calculateChange : function() {};
-window.autofillPrice = typeof autofillPrice !== 'undefined' ? autofillPrice : function() {};
-window.saveProduct = typeof saveProduct !== 'undefined' ? saveProduct : function() {};
-window.resetStockForm = typeof resetStockForm !== 'undefined' ? resetStockForm : function() {};
-window.restockProduct = typeof restockProduct !== 'undefined' ? restockProduct : function() {};
-window.handleBulkUpload = typeof handleBulkUpload !== 'undefined' ? handleBulkUpload : function() {};
-window.renderStockTable = typeof renderStockTable !== 'undefined' ? renderStockTable : function() {};
 
 window.logout = async function() {
-    if (db && db.auth) {
-        await db.auth.signOut();
+    if (supabase && supabase.auth) {
+        await supabase.auth.signOut();
     }
     window.location.href = 'index.html';
 };
-
