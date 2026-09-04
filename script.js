@@ -488,11 +488,19 @@ function renderStockTable() {
 }
 
 async function saveProduct() {
-    const name = document.getElementById("new-name").value.trim();
-    const cat = document.getElementById("new-cat").value.trim();
-    const price = parseFloat(document.getElementById("new-price").value);
-    const stock = parseInt(document.getElementById("new-stock").value);
-    const editIndex = parseInt(document.getElementById("edit-index").value);
+    const nameInput = document.getElementById("new-name");
+    const catInput = document.getElementById("new-cat");
+    const priceInput = document.getElementById("new-price");
+    const stockInput = document.getElementById("new-stock");
+    const editIndexInput = document.getElementById("edit-index");
+
+    if (!nameInput || !catInput || !priceInput || !stockInput) return;
+
+    const name = nameInput.value.trim();
+    const cat = catInput.value.trim();
+    const price = parseFloat(priceInput.value);
+    const stock = parseInt(stockInput.value);
+    const editIndex = parseInt(editIndexInput ? editIndexInput.value : -1);
 
     if (!name || !cat) {
         showNotification("Le nom et la catégorie sont obligatoires.", "error");
@@ -544,21 +552,35 @@ function editProduct(index) {
     document.getElementById("new-stock").value = item.stock;
     document.getElementById("edit-index").value = index;
 
-    document.getElementById("stock-form-title").innerHTML = "✏️ Modifier le produit";
-    document.getElementById("save-btn").textContent = "Mettre à jour";
-    document.getElementById("cancel-btn").style.display = "block";
+    const title = document.getElementById("stock-form-title");
+    const saveBtn = document.getElementById("save-btn");
+    const cancelBtn = document.getElementById("cancel-btn");
+
+    if (title) title.innerHTML = "✏️ Modifier le produit";
+    if (saveBtn) saveBtn.textContent = "Mettre à jour";
+    if (cancelBtn) cancelBtn.style.display = "inline-block";
 }
 
 function resetStockForm() {
-    document.getElementById("new-name").value = "";
-    document.getElementById("new-cat").value = "";
-    document.getElementById("new-price").value = "";
-    document.getElementById("new-stock").value = "";
-    document.getElementById("edit-index").value = -1;
+    const name = document.getElementById("new-name");
+    const cat = document.getElementById("new-cat");
+    const price = document.getElementById("new-price");
+    const stock = document.getElementById("new-stock");
+    const editIdx = document.getElementById("edit-index");
 
-    document.getElementById("stock-form-title").innerHTML = "➕ Ajouter un produit";
-    document.getElementById("save-btn").textContent = "Enregistrer";
-    document.getElementById("cancel-btn").style.display = "none";
+    if (name) name.value = "";
+    if (cat) cat.value = "";
+    if (price) price.value = "";
+    if (stock) stock.value = "";
+    if (editIdx) editIdx.value = -1;
+
+    const title = document.getElementById("stock-form-title");
+    const saveBtn = document.getElementById("save-btn");
+    const cancelBtn = document.getElementById("cancel-btn");
+
+    if (title) title.innerHTML = "➕ Ajouter un produit";
+    if (saveBtn) saveBtn.textContent = "Enregistrer";
+    if (cancelBtn) cancelBtn.style.display = "none";
 }
 
 async function deleteProduct(index) {
@@ -583,8 +605,13 @@ async function deleteProduct(index) {
 }
 
 async function restockProduct() {
-    const index = parseInt(document.getElementById("restock-select").value);
-    const quantity = parseInt(document.getElementById("restock-qty").value);
+    const selectEl = document.getElementById("restock-select");
+    const qtyEl = document.getElementById("restock-qty");
+
+    if (!selectEl || !qtyEl) return;
+
+    const index = parseInt(selectEl.value);
+    const quantity = parseInt(qtyEl.value);
 
     if (Number.isNaN(index) || Number.isNaN(quantity) || quantity <= 0 || !inventory[index]) {
         showNotification("Veuillez saisir une quantité valide.", "error");
@@ -605,7 +632,7 @@ async function restockProduct() {
         return;
     }
 
-    document.getElementById("restock-qty").value = "";
+    qtyEl.value = "";
     showNotification("Approvisionnement effectué avec succès", "success");
     await loadInventoryFromSupabase();
 }
@@ -729,7 +756,7 @@ function formatDate(dateString) {
 }
 
 /* =========================================================
-   EXPOSITION GLOBALE DES FONCTIONS (onclick HTML)
+   ATTACHEMENT GLOBAL DÉFINITIF POUR LES BOUTONS (window)
 ========================================================= */
 
 window.toggleSidebar = toggleSidebar;
