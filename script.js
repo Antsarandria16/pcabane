@@ -387,11 +387,19 @@ async function checkout() {
         return;
     }
 
+    // 1. Inserer dans 'ventes' (Transmettre un objet/array directement si la colonne est jsonb)
+    const cartItems = cart.map(item => ({ 
+        id: item.id,
+        name: item.name, 
+        qty: item.qty, 
+        unitPrice: item.unitPrice 
+    }));
+
     const salePayload = {
         total: total,
         received: received,
         change_amount: received - total,
-        items: JSON.stringify(cart.map(item => ({ name: item.name, qty: item.qty, unitPrice: item.unitPrice }))),
+        items: cartItems, // Objet/Array JavaScript (compatible json/jsonb)
         created_at: new Date().toISOString()
     };
 
@@ -402,10 +410,11 @@ async function checkout() {
 
     if (saleError) {
         console.error("Erreur enregistrement vente :", saleError);
-        showNotification("Erreur lors de la sauvegarde de la vente.", "error");
+        showNotification(`Erreur lors de la vente: ${saleError.message}`, "error");
         return;
     }
 
+    // 2. Inserer dans 'ligne_ventes' (si la table existe)
     if (insertedSale && insertedSale.length > 0) {
         const venteId = insertedSale[0].id;
         const ligneVentesPayload = cart.map(item => ({
@@ -415,18 +424,26 @@ async function checkout() {
             prix_unitaire: item.unitPrice
         }));
 
-        await supabase.from("ligne_ventes").insert(ligneVentesPayload);
+        const { error: ligneError } = await supabase.from("ligne_ventes").insert(ligneVentesPayload);
+        if (ligneError) {
+            console.warn("Erreur enregistrement lignes de vente :", ligneError);
+        }
     }
 
+    // 3. Décrémenter le stock dans 'produits'
     for (const item of cart) {
         const product = inventory.find(p => p.id === item.id);
         if (product) {
             const newStock = Math.max(0, product.stock - item.qty);
 
-            await supabase
+            const { error: stockError } = await supabase
                 .from("produits")
                 .update({ stock: newStock })
                 .eq("id", item.id);
+
+            if (stockError) {
+                console.error(`Erreur mise à jour stock produit ${item.id} :`, stockError);
+            }
         }
     }
 
@@ -435,6 +452,7 @@ async function checkout() {
     cart = [];
     if (receivedEl) receivedEl.value = "";
 
+    // Recharger les données
     await loadInventoryFromSupabase();
     await loadSalesFromSupabase();
 }
