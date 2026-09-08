@@ -689,7 +689,7 @@ async function restockProduct() {
 }
 
 /* =========================================================
-   1. VALIDER LA VENTE (SANS COLONNE ITEMS)
+   1. VALIDER LA VENTE (CORRIGÉ SANS LA COLONNE RECEIVED)
 ========================================================= */
 
 async function checkout() {
@@ -710,10 +710,9 @@ async function checkout() {
     // Récupération de l'utilisateur connecté s'il existe
     const { data: { user } } = await supabase.auth.getUser();
 
-    // Payload envoyé à 'ventes' : uniquement les colonnes existantes
+    // Payload envoyé à 'ventes' : sans la colonne 'received'
     const salePayload = {
         total: total,
-        received: received,
         change_amount: received - total,
         created_at: new Date().toISOString(),
         user_id: user ? user.id : null
@@ -775,20 +774,19 @@ async function checkout() {
 }
 
 /* =========================================================
-   2. CHARGER L'HISTORIQUE (EN RÉCUPÉRANT LES LIGNES DE VENTE)
+   2. CHARGER L'HISTORIQUE (CORRIGÉ SANS LA COLONNE RECEIVED)
 ========================================================= */
 
 async function loadSalesFromSupabase() {
     if (!supabase) return;
 
-    // Jointure automatique pour récupérer les produits vendus via ligne_ventes
+    // Sélection uniquement des colonnes existantes
     const { data, error } = await supabase
         .from("ventes")
         .select(`
             id,
             created_at,
             total,
-            received,
             change_amount,
             ligne_ventes (
                 quantite,
@@ -806,21 +804,25 @@ async function loadSalesFromSupabase() {
     salesHistory = (data || []).map(sale => {
         const dateObj = new Date(sale.created_at);
         
-        // Reconstitution de la liste des produits pour l'affichage
         const formattedItems = (sale.ligne_ventes || []).map(lv => ({
             name: lv.produits ? lv.produits.nom : "Produit",
             qty: lv.quantite,
             unitPrice: lv.prix_unitaire
         }));
 
+        // Calcul du montant reçu à partir du total et de la monnaie rendue
+        const totalVal = Number(sale.total) || 0;
+        const changeVal = Number(sale.change_amount) || 0;
+        const calculatedReceived = totalVal + changeVal;
+
         return {
             id: sale.id,
             date: dateObj.toISOString().split("T")[0],
             time: dateObj.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
             items: formattedItems,
-            total: sale.total,
-            received: sale.received || sale.total,
-            change: sale.change_amount || 0
+            total: totalVal,
+            received: calculatedReceived,
+            change: changeVal
         };
     });
 
