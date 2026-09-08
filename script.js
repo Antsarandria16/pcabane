@@ -677,70 +677,83 @@ async function checkout() {
         return;
     }
 
-    // Récupération de l'utilisateur connecté s'il existe
-    const { data: { user } } = await supabase.auth.getUser();
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
 
-    // Payload envoyé à 'ventes' : sans la colonne 'received'
-    const salePayload = {
-        total: total,
-        change_amount: received - total,
-        created_at: new Date().toISOString(),
-        user_id: user ? user.id : null
-    };
+        // 1. Insertion dans la table 'ventes'
+        const salePayload = {
+            total: total,
+            change_amount: received - total,
+            created_at: new Date().toISOString(),
+            user_id: user ? user.id : null
+        };
 
-    // 1. Enregistrement de la vente principale
-    const { data: insertedSale, error: saleError } = await supabase
-        .from("ventes")
-        .insert([salePayload])
-        .select();
+        const { data: insertedSale, error: saleError } = await supabase
+            .from("ventes")
+            .insert([salePayload])
+            .select();
 
-    if (saleError) {
-        console.error("Erreur enregistrement vente :", saleError);
-        showNotification(`Erreur lors de la vente: ${saleError.message}`, "error");
-        return;
-    }
+        if (saleError) {
+            alert("Erreur VENTE : " + saleError.message + " | Détail: " + (saleError.details || ''));
+            console.error("Erreur Vente:", saleError);
+            return;
+        }
 
-    // 2. Enregistrement des articles vendus dans 'ligne_ventes'
-    if (insertedSale && insertedSale.length > 0) {
+        if (!insertedSale || insertedSale.length === 0) {
+            alert("Erreur : La vente n'a pas renvoyé d'identifiant (ID).");
+            return;
+        }
+
         const venteId = insertedSale[0].id;
+
+        // 2. Préparation du tableau des articles pour 'ligne_ventes'
         const ligneVentesPayload = cart.map(item => ({
             vente_id: venteId,
-            produit_id: item.id,
+            produit_id: item.id, // Vérifiez si produit_id dans Supabase est de type texte ou entier !
             quantite: item.qty,
-            prix_unitaire: item.unitPrice
+            prix_unitaire: item.unitPrice,
+            total_ligne: item.qty * item.unitPrice
         }));
 
-        const { error: ligneError } = await supabase
+        console.log("Payload envoyé à ligne_ventes :", ligneVentesPayload);
+
+        // 3. Insertion dans la table 'ligne_ventes'
+        const { data: insertedLines, error: ligneError } = await supabase
             .from("ligne_ventes")
-            .insert(ligneVentesPayload);
+            .insert(ligneVentesPayload)
+            .select();
 
         if (ligneError) {
-            console.error("Erreur enregistrement ligne_ventes :", ligneError);
+            alert("Erreur LIGNE_VENTES : " + ligneError.message + " | Code: " + ligneError.code);
+            console.error("Erreur Ligne Ventes:", ligneError);
+            return;
         }
-    }
 
-    // 3. Mise à jour du stock dans la table 'produits'
-    for (const item of cart) {
-        const product = inventory.find(p => p.id === item.id);
-        if (product) {
-            const newStock = Math.max(0, product.stock - item.qty);
-
-            await supabase
-                .from("produits")
-                .update({ stock: newStock })
-                .eq("id", item.id);
+        // 4. Mettre à jour le stock dans 'produits'
+        for (const item of cart) {
+            const product = inventory.find(p => p.id === item.id);
+            if (product) {
+                const newStock = Math.max(0, product.stock - item.qty);
+                await supabase
+                    .from("produits")
+                    .update({ stock: newStock })
+                    .eq("id", item.id);
+            }
         }
+
+        alert("Succès ! La vente ET les articles ont bien été enregistrés dans Supabase !");
+
+        // Réinitialisation
+        cart = [];
+        if (receivedEl) receivedEl.value = "";
+
+        await loadInventoryFromSupabase();
+        await loadSalesFromSupabase();
+
+    } catch (err) {
+        alert("Erreur Inattendue : " + err.message);
+        console.error("Catch error:", err);
     }
-
-    showNotification("Vente validée et stock mis à jour !", "success");
-
-    // Réinitialisation du panier
-    cart = [];
-    if (receivedEl) receivedEl.value = "";
-
-    // Rechargement des données fraîches
-    await loadInventoryFromSupabase();
-    await loadSalesFromSupabase();
 }
 
 /* =========================================================
