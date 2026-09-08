@@ -714,3 +714,57 @@ window.logout = async function() {
     }
     window.location.href = 'index.html';
 };
+
+/* =========================================================
+   FONCTION D'APPROVISIONNEMENT (RESTOCK)
+========================================================= */
+
+async function restockProduct(productId, amountToAdd) {
+    if (!productId || amountToAdd <= 0) {
+        alert("Veuillez saisir une quantité valide.");
+        return;
+    }
+
+    const client = getSupabaseClient();
+    if (!client) return;
+
+    try {
+        // 1. Récupérer le stock actuel
+        const { data: product, error: fetchErr } = await client
+            .from("produits")
+            .select("stock")
+            .eq("id", productId)
+            .single();
+
+        if (fetchErr) throw fetchErr;
+
+        const newStock = (product.stock || 0) + parseInt(amountToAdd, 10);
+
+        // 2. Mettre à jour le stock dans la table produits
+        const { error: updateErr } = await client
+            .from("produits")
+            .update({ stock: newStock })
+            .eq("id", productId);
+
+        if (updateErr) throw updateErr;
+
+        // 3. (Optionnel) Enregistrer dans l'historique de stock
+        await client.from("stock_history").insert([{
+            produit_id: productId,
+            quantite_ajoutee: parseInt(amountToAdd, 10)
+        }]);
+
+        alert("Approvisionnement réussi !");
+        
+        // Recharger les données à l'écran
+        if (typeof loadInventoryFromSupabase === 'function') {
+            loadInventoryFromSupabase();
+        } else {
+            location.reload();
+        }
+
+    } catch (err) {
+        console.error("Erreur lors de l'approvisionnement :", err);
+        alert(`Erreur : ${err.message || 'Impossible de mettre à jour le stock'}`);
+    }
+}
