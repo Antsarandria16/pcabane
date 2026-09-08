@@ -777,55 +777,87 @@ async function checkout() {
    2. CHARGER L'HISTORIQUE (CORRIGÉ SANS LA COLONNE RECEIVED)
 ========================================================= */
 
+/* =========================================================
+   2. CHARGER L'HISTORIQUE ET RECONSTITUER LES ARTICLES VENDUS
+========================================================= */
+
 async function loadSalesFromSupabase() {
     if (!supabase) return;
 
-    // Sélection uniquement des colonnes existantes
-    const { data, error } = await supabase
-        .from("ventes")
-        .select(`
-            id,
-            created_at,
-            total,
-            change_amount,
-            ligne_ventes (
-                quantite,
-                prix_unitaire,
-                produits ( nom )
-            )
-        `)
-        .order("created_at", { ascending: false });
+    try {
+        // 1. Récupération des ventes
+        const { data: sales, error: salesError } = await supabase
+            .from("ventes")
+            .select("id, created_at, total, change_amount")
+            .order("created_at", { ascending: false });
 
-    if (error) {
-        console.error("Erreur de chargement des ventes :", error);
-        return;
+        if (salesError) {
+            console.error("Erreur chargement ventes :", salesError);
+            return;
+        }
+
+        if (!sales || sales.length === 0) {
+            salesHistory = [];
+            renderSalesHistory();
+            updateDashboard();
+            return;
+        }
+
+        // 2. Récupération de toutes les lignes de ventes
+        const saleIds = sales.map(s => s.id);
+        const { data: lines, error: linesError } = await supabase
+            .from("ligne_ventes")
+            .select("vente_id, quantite, prix_unitaire, produit_id, produits(nom)")
+            .in("vente_id", saleIds);
+
+        if (linesError) {
+            console.error("Erreur chargement ligne_ventes :", linesError);
+        }
+
+        // Groupement des lignes par id de vente
+        const linesBySale = {};
+        (lines || []).forEach(line => {
+            if (!linesBySale[line.vente_id]) {
+                linesBySale[line.vente_id] = [];
+            }
+            
+            // Extraction du nom du produit
+            let productName = "Produit";
+            if (line.produits && line.produits.nom) {
+                productName = line.produits.nom;
+            } else if (line.produit_id) {
+                const foundProd = inventory.find(p => p.id === line.produit_id);
+                if (foundProd) productName = foundProd.name;
+            }
+
+            linesBySale[line.vente_id].push({
+                name: productName,
+                qty: line.quantite,
+                unitPrice: line.prix_unitaire
+            });
+        });
+
+        // 3. Reconstruction de l'historique pour l'affichage
+        salesHistory = sales.map(sale => {
+            const dateObj = new Date(sale.created_at);
+            const totalVal = Number(sale.total) || 0;
+            const changeVal = Number(sale.change_amount) || 0;
+
+            return {
+                id: sale.id,
+                date: dateObj.toISOString().split("T")[0],
+                time: dateObj.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+                items: linesBySale[sale.id] || [],
+                total: totalVal,
+                received: totalVal + changeVal,
+                change: changeVal
+            };
+        });
+
+        renderSalesHistory();
+        updateDashboard();
+
+    } catch (err) {
+        console.error("Erreur globale dans loadSalesFromSupabase :", err);
     }
-
-    salesHistory = (data || []).map(sale => {
-        const dateObj = new Date(sale.created_at);
-        
-        const formattedItems = (sale.ligne_ventes || []).map(lv => ({
-            name: lv.produits ? lv.produits.nom : "Produit",
-            qty: lv.quantite,
-            unitPrice: lv.prix_unitaire
-        }));
-
-        // Calcul du montant reçu à partir du total et de la monnaie rendue
-        const totalVal = Number(sale.total) || 0;
-        const changeVal = Number(sale.change_amount) || 0;
-        const calculatedReceived = totalVal + changeVal;
-
-        return {
-            id: sale.id,
-            date: dateObj.toISOString().split("T")[0],
-            time: dateObj.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-            items: formattedItems,
-            total: totalVal,
-            received: calculatedReceived,
-            change: changeVal
-        };
-    });
-
-    renderSalesHistory();
-    updateDashboard();
 }
