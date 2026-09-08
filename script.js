@@ -723,8 +723,11 @@ window.logout = async function() {
    FONCTION D'APPROVISIONNEMENT (RESTOCK)
 ========================================================= */
 
+/* =========================================================
+   FONCTION D'APPROVISIONNEMENT (RESTOCK) - CORRIGÉE
+========================================================= */
+
 async function restockProduct() {
-    // 1. Récupération des éléments du formulaire
     const selectElem = document.getElementById("restock-select");
     const inputElem = document.getElementById("restock-qty");
 
@@ -736,57 +739,74 @@ async function restockProduct() {
     const productId = selectElem.value;
     const amountToAdd = parseInt(inputElem.value, 10);
 
-    // 2. Contrôle de validité
     if (!productId || isNaN(amountToAdd) || amountToAdd <= 0) {
         alert("Veuillez choisir un produit et saisir une quantité valide (supérieure à 0).");
         return;
     }
 
-    const client = window.supabaseClient || (typeof getSupabaseClient === 'function' ? getSupabaseClient() : null);
+    const client = window.supabaseClient;
     if (!client) {
         alert("Erreur de connexion à Supabase.");
         return;
     }
 
     try {
-        // 3. Récupérer le stock actuel du produit
-        const { data: product, error: fetchErr } = await client
+        // 1. Recherche du produit (compatible avec ID UUID ou Nom)
+        let product = null;
+
+        // Tentative par ID
+        let { data, error } = await client
             .from("produits")
-            .select("stock, nom")
+            .select("id, nom, stock")
             .eq("id", productId)
-            .single();
+            .maybeSingle();
 
-        if (fetchErr) throw fetchErr;
+        // Si non trouvé par ID, tentative par Nom
+        if (!data) {
+            const { data: dataByName } = await client
+                .from("produits")
+                .select("id, nom, stock")
+                .eq("nom", productId)
+                .maybeSingle();
+            data = dataByName;
+        }
 
-        const newStock = (product.stock || 0) + amountToAdd;
+        if (!data) {
+            alert("Erreur : Le produit sélectionné est introuvable dans la base de données.");
+            return;
+        }
 
-        // 4. Mettre à jour le stock dans Supabase
+        product = data;
+        const currentStock = parseInt(product.stock || 0, 10);
+        const newStock = currentStock + amountToAdd;
+
+        // 2. Mettre à jour le stock dans Supabase
         const { error: updateErr } = await client
             .from("produits")
             .update({ stock: newStock })
-            .eq("id", productId);
+            .eq("id", product.id);
 
         if (updateErr) throw updateErr;
 
-        // 5. Enregistrer le mouvement dans l'historique du stock (stock_history)
+        // 3. Enregistrer l'historique d'approvisionnement
         await client.from("stock_history").insert([{
-            produit_id: productId,
+            produit_id: product.id,
             quantite_ajoutee: amountToAdd,
             type: "appro",
             note: `Approvisionnement de ${amountToAdd} unité(s)`
-        }]);
+        }]).then(() => {}).catch(err => console.warn("Note historique :", err));
 
-        // Reset du champ quantité et retour visuel
+        // 4. Réinitialisation et rechargement de l'interface
         inputElem.value = "";
-        alert(`Stock mis à jour pour ${product.nom} ! Nouveau stock : ${newStock}`);
+        alert(`Stock mis à jour avec succès pour "${product.nom}" ! Nouveau stock : ${newStock}`);
 
-        // Recharger les tableaux du tableau de bord et des stocks
+        // Recharger les données si vos fonctions d'affichage existent
         if (typeof loadStockTable === 'function') loadStockTable();
         if (typeof loadDashboardStats === 'function') loadDashboardStats();
-        if (typeof loadStockHistory === 'function') loadStockHistory();
+        if (typeof renderStockTable === 'function') renderStockTable();
 
     } catch (err) {
-        console.error("Erreur d'approvisionnement :", err);
+        console.error("Erreur lors de l'approvisionnement :", err);
         alert(`Échec de l'approvisionnement : ${err.message || 'Erreur inconnue'}`);
     }
 }
