@@ -662,6 +662,24 @@ async function restockProduct() {
    1. VALIDER LA VENTE (CORRIGÉ SANS LA COLONNE RECEIVED)
 ========================================================= */
 
+
+
+/* =========================================================
+   2. CHARGER L'HISTORIQUE (CORRIGÉ SANS LA COLONNE RECEIVED)
+========================================================= */
+
+/* =========================================================
+   2. CHARGER L'HISTORIQUE ET RECONSTITUER LES ARTICLES VENDUS
+========================================================= */
+
+/* =========================================================
+   2. CHARGER L'HISTORIQUE ET AFFICHER LES ARTICLES VENDUS
+========================================================= */
+
+/* =========================================================
+   1. VALIDER LA VENTE (AVEC HISTORIQUE STOCK ET LIGNE_VENTES)
+========================================================= */
+
 async function checkout() {
     if (cart.length === 0) {
         showNotification("Le panier est vide.", "error");
@@ -680,7 +698,7 @@ async function checkout() {
     try {
         const { data: { user } } = await supabase.auth.getUser();
 
-        // 1. Insertion dans la table 'ventes'
+        // 1. Enregistrement de la vente principale
         const salePayload = {
             total: total,
             change_amount: received - total,
@@ -694,56 +712,75 @@ async function checkout() {
             .select();
 
         if (saleError) {
-            alert("Erreur VENTE : " + saleError.message + " | Détail: " + (saleError.details || ''));
+            alert("Erreur VENTE : " + saleError.message);
             console.error("Erreur Vente:", saleError);
             return;
         }
 
         if (!insertedSale || insertedSale.length === 0) {
-            alert("Erreur : La vente n'a pas renvoyé d'identifiant (ID).");
+            alert("Erreur : Impossible de récupérer l'ID de la vente.");
             return;
         }
 
         const venteId = insertedSale[0].id;
 
-        // 2. Préparation du tableau des articles pour 'ligne_ventes'
+        // 2. Préparation des lignes de vente
         const ligneVentesPayload = cart.map(item => ({
             vente_id: venteId,
-            produit_id: item.id, // Vérifiez si produit_id dans Supabase est de type texte ou entier !
+            produit_id: item.id,
             quantite: item.qty,
             prix_unitaire: item.unitPrice,
             total_ligne: item.qty * item.unitPrice
         }));
 
-        console.log("Payload envoyé à ligne_ventes :", ligneVentesPayload);
-
-        // 3. Insertion dans la table 'ligne_ventes'
-        const { data: insertedLines, error: ligneError } = await supabase
+        const { error: ligneError } = await supabase
             .from("ligne_ventes")
-            .insert(ligneVentesPayload)
-            .select();
+            .insert(ligneVentesPayload);
 
         if (ligneError) {
-            alert("Erreur LIGNE_VENTES : " + ligneError.message + " | Code: " + ligneError.code);
+            alert("Erreur LIGNE_VENTES : " + ligneError.message);
             console.error("Erreur Ligne Ventes:", ligneError);
             return;
         }
 
-        // 4. Mettre à jour le stock dans 'produits'
+        // 3. Mise à jour du stock + Enregistrement dans stock_history
         for (const item of cart) {
             const product = inventory.find(p => p.id === item.id);
             if (product) {
-                const newStock = Math.max(0, product.stock - item.qty);
+                const oldStock = Number(product.stock) || 0;
+                const newStock = Math.max(0, oldStock - item.qty);
+
+                // a. Mise à jour du produit
                 await supabase
                     .from("produits")
                     .update({ stock: newStock })
                     .eq("id", item.id);
+
+                // b. Insertion dans la table stock_history
+                const stockHistoryPayload = {
+                    produit_id: item.id,
+                    type_mouvement: "VENTE",
+                    quantite: -item.qty,
+                    ancien_stock: oldStock,
+                    nouveau_stock: newStock,
+                    motif: `Vente #${venteId}`,
+                    created_at: new Date().toISOString(),
+                    user_id: user ? user.id : null
+                };
+
+                const { error: historyError } = await supabase
+                    .from("stock_history")
+                    .insert([stockHistoryPayload]);
+
+                if (historyError) {
+                    console.error("Erreur historique stock :", historyError.message);
+                }
             }
         }
 
-        alert("Succès ! La vente ET les articles ont bien été enregistrés dans Supabase !");
+        alert("Vente validée, articles enregistrés et historique de stock mis à jour !");
 
-        // Réinitialisation
+        // Réinitialisation du panier
         cart = [];
         if (receivedEl) receivedEl.value = "";
 
@@ -751,101 +788,8 @@ async function checkout() {
         await loadSalesFromSupabase();
 
     } catch (err) {
-        alert("Erreur Inattendue : " + err.message);
+        alert("Erreur inattendue : " + err.message);
         console.error("Catch error:", err);
-    }
-}
-
-/* =========================================================
-   2. CHARGER L'HISTORIQUE (CORRIGÉ SANS LA COLONNE RECEIVED)
-========================================================= */
-
-/* =========================================================
-   2. CHARGER L'HISTORIQUE ET RECONSTITUER LES ARTICLES VENDUS
-========================================================= */
-
-/* =========================================================
-   2. CHARGER L'HISTORIQUE ET AFFICHER LES ARTICLES VENDUS
-========================================================= */
-
-async function loadSalesFromSupabase() {
-    if (!supabase) return;
-
-    try {
-        // 1. Récupération des ventes
-        const { data: sales, error: salesError } = await supabase
-            .from("ventes")
-            .select("id, created_at, total, change_amount")
-            .order("created_at", { ascending: false });
-
-        if (salesError) {
-            console.error("Erreur chargement ventes :", salesError);
-            return;
-        }
-
-        if (!sales || sales.length === 0) {
-            salesHistory = [];
-            renderSalesHistory();
-            updateDashboard();
-            return;
-        }
-
-        // 2. Récupération des lignes de ventes avec les produits associées
-        const saleIds = sales.map(s => s.id);
-        const { data: lines, error: linesError } = await supabase
-            .from("ligne_ventes")
-            .select("vente_id, quantite, prix_unitaire, produit_id, produits(nom)")
-            .in("vente_id", saleIds);
-
-        if (linesError) {
-            console.error("Erreur chargement ligne_ventes :", linesError);
-        }
-
-        // Regroupement des articles par vente
-        const linesBySale = {};
-        (lines || []).forEach(line => {
-            if (!linesBySale[line.vente_id]) {
-                linesBySale[line.vente_id] = [];
-            }
-            
-            // Récupération du nom du produit (soit par relation Supabase, soit dans l'inventaire local)
-            let productName = "Produit";
-            if (line.produits && line.produits.nom) {
-                productName = line.produits.nom;
-            } else if (line.produit_id) {
-                const foundProd = inventory.find(p => p.id === line.produit_id);
-                if (foundProd) productName = foundProd.name;
-            }
-
-            linesBySale[line.vente_id].push({
-                name: productName,
-                qty: line.quantite,
-                unitPrice: line.prix_unitaire
-            });
-        });
-
-        // 3. Formattage de salesHistory
-        salesHistory = sales.map(sale => {
-            const dateObj = new Date(sale.created_at);
-            const totalVal = Number(sale.total) || 0;
-            const changeVal = Number(sale.change_amount) || 0;
-
-            return {
-                id: sale.id,
-                date: dateObj.toISOString().split("T")[0],
-                time: dateObj.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-                items: linesBySale[sale.id] || [],
-                total: totalVal,
-                received: totalVal + changeVal,
-                change: changeVal
-            };
-        });
-
-        renderSalesHistory();
-        updateDashboard();
-
-    } catch (err) {
-        console.error("Erreur dans loadSalesFromSupabase :", err);
     }
 }
 
