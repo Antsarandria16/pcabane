@@ -2,7 +2,6 @@
    INITIALISATION & CLIENT SUPABASE
 ========================================================= */
 
-// Récupération de l'instance Supabase sans utiliser 'const supabase' pour éviter les conflits de re-déclaration
 var supabase = window.supabaseClient || window.supabase;
 
 let inventory = [];
@@ -10,7 +9,6 @@ let salesHistory = [];
 let cart = [];
 
 window.addEventListener("DOMContentLoaded", async () => {
-    // S'assurer que le client Supabase est bien assigné
     if (!supabase && window.supabaseClient) {
         supabase = window.supabaseClient;
     }
@@ -23,7 +21,6 @@ window.addEventListener("DOMContentLoaded", async () => {
         );
     }
 
-    // Chargement initial des données depuis Supabase
     await loadInventoryFromSupabase();
     await loadSalesFromSupabase();
 
@@ -31,33 +28,34 @@ window.addEventListener("DOMContentLoaded", async () => {
 });
 
 /* =========================================================
-   CHARGEMENT & SYNCHRONISATION SUPABASE
+   CHARGEMENT DE LA TABLE PRODUITS DEPUIS SUPABASE
 ========================================================= */
 
-// Charger la liste des produits depuis Supabase (Table 'produits')
 async function loadInventoryFromSupabase() {
     if (!supabase) {
         console.error("Client Supabase introuvable.");
         return;
     }
 
+    // Récupération des colonnes id, nom, category_id, prix, stock
     const { data, error } = await supabase
         .from("produits")
         .select("*")
         .order("nom", { ascending: true });
 
     if (error) {
-        console.error("Erreur de chargement du stock :", error);
+        console.error("Erreur de chargement des produits :", error);
         showNotification("Erreur lors de la récupération des produits.", "error");
         return;
     }
 
+    // Mapping incluant le stock réel de Supabase
     inventory = (data || []).map(item => ({
         id: item.id,
-        name: item.nom,
-        cat: item.category_id || "Général",
-        price: item.prix,
-        stock: item.stock || 0
+        name: item.nom,                             // Colonne 'nom'
+        cat: item.category_id || "Général",         // Colonne 'category_id'
+        price: item.prix,                           // Colonne 'prix'
+        stock: item.stock !== null && item.stock !== undefined ? item.stock : 0 // Colonne 'stock'
     }));
 
     renderStockTable();
@@ -65,7 +63,7 @@ async function loadInventoryFromSupabase() {
     updateAnalytics();
 }
 
-// Charger l'historique des ventes depuis Supabase (Table 'ventes')
+// Charger l'historique des ventes depuis Supabase
 async function loadSalesFromSupabase() {
     if (!supabase) return;
 
@@ -76,7 +74,6 @@ async function loadSalesFromSupabase() {
 
     if (error) {
         console.error("Erreur de chargement des ventes :", error);
-        showNotification("Erreur lors de la récupération de l'historique.", "error");
         return;
     }
 
@@ -98,7 +95,7 @@ async function loadSalesFromSupabase() {
 }
 
 /* =========================================================
-   MENU & NAVIGATION
+   NAVIGATION & UTILITAIRES
 ========================================================= */
 
 function toggleSidebar() {
@@ -124,7 +121,7 @@ function switchTab(tabId, element) {
     const titles = {
         dashboard: "Tableau de bord",
         caisse: "Caisse Enregistreuse",
-        stock: "Gestion des Stocks",
+        stock: "Gestion des Produits",
         analytique: "Analyses & Rapports",
         historique: "Historique des Ventes"
     };
@@ -144,10 +141,6 @@ function switchTab(tabId, element) {
         updateAnalytics();
     }
 }
-
-/* =========================================================
-   UTILITAIRES & NOTIFICATIONS
-========================================================= */
 
 function formatMoney(value) {
     return Number(value || 0).toLocaleString(
@@ -216,18 +209,16 @@ function updateDatalists() {
     const datalist = document.getElementById("products-datalist");
     const select = document.getElementById("restock-select");
 
-    if (!datalist || !select) return;
-
+    if (!datalist) return;
     datalist.innerHTML = "";
-    select.innerHTML = "";
+
+    if (select) select.innerHTML = "";
 
     inventory.forEach((item, index) => {
         datalist.innerHTML += `<option value="${escapeHtml(item.name)}">`;
-        select.innerHTML += `
-            <option value="${index}">
-                ${escapeHtml(item.name)} (Stock: ${item.stock})
-            </option>
-        `;
+        if (select) {
+            select.innerHTML += `<option value="${index}">${escapeHtml(item.name)}</option>`;
+        }
     });
 }
 
@@ -257,19 +248,17 @@ function addToCart() {
         return;
     }
 
-    const existing = cart.find(
-        item => item.name.toLowerCase() === product.name.toLowerCase()
-    );
+    // Vérification de la réserve en stock
+    const existingInCart = cart.find(item => item.id === product.id);
+    const totalRequested = (existingInCart ? existingInCart.qty : 0) + qty;
 
-    const quantityAlreadyInCart = existing ? existing.qty : 0;
-
-    if (quantityAlreadyInCart + qty > product.stock) {
-        showNotification(`Stock insuffisant. Disponible : ${product.stock}`, "error");
+    if (totalRequested > product.stock) {
+        showNotification(`Stock insuffisant ! Disponible: ${product.stock}`, "error");
         return;
     }
 
-    if (existing) {
-        existing.qty += qty;
+    if (existingInCart) {
+        existingInCart.qty += qty;
     } else {
         cart.push({
             id: product.id,
@@ -335,9 +324,7 @@ function changeCartQuantity(index, amount) {
     const item = cart[index];
     if (!item) return;
 
-    const product = inventory.find(p => p.name.toLowerCase() === item.name.toLowerCase());
-    if (!product) return;
-
+    const product = inventory.find(p => p.id === item.id);
     const newQty = item.qty + amount;
 
     if (newQty <= 0) {
@@ -345,8 +332,8 @@ function changeCartQuantity(index, amount) {
         return;
     }
 
-    if (newQty > product.stock) {
-        showNotification(`Stock disponible atteint : ${product.stock}`, "error");
+    if (product && newQty > product.stock) {
+        showNotification(`Stock max atteint (${product.stock})`, "error");
         return;
     }
 
@@ -386,7 +373,7 @@ function cancelCart() {
 }
 
 /* =========================================================
-   ENCAISSEMENT AVEC SUPABASE
+   ENCAISSEMENT AVEC DECREMENTATION DU STOCK SUR SUPABASE
 ========================================================= */
 
 async function checkout() {
@@ -404,32 +391,7 @@ async function checkout() {
         return;
     }
 
-    for (const cartItem of cart) {
-        const product = inventory.find(p => p.name.toLowerCase() === cartItem.name.toLowerCase());
-        if (!product || product.stock < cartItem.qty) {
-            showNotification(`Stock insuffisant pour ${cartItem.name}.`, "error");
-            return;
-        }
-    }
-
-    // Mise à jour des stocks dans 'produits'
-    for (const cartItem of cart) {
-        const product = inventory.find(p => p.name.toLowerCase() === cartItem.name.toLowerCase());
-        const newStock = product.stock - cartItem.qty;
-
-        if (product.id) {
-            const { error: stockError } = await supabase
-                .from("produits")
-                .update({ stock: newStock })
-                .eq("id", product.id);
-
-            if (stockError) {
-                console.error("Erreur de mise à jour du stock :", stockError);
-            }
-        }
-    }
-
-    // Enregistrement de la vente dans 'ventes'
+    // 1. Enregistrement de la vente globale dans 'ventes'
     const salePayload = {
         total: total,
         received: received,
@@ -445,11 +407,11 @@ async function checkout() {
 
     if (saleError) {
         console.error("Erreur enregistrement vente :", saleError);
-        showNotification("Erreur lors de la sauvegarde de la vente sur Supabase.", "error");
+        showNotification("Erreur lors de la sauvegarde de la vente.", "error");
         return;
     }
 
-    // Optionnel : Insérer les détails dans 'ligne_ventes' si la table existe
+    // 2. Enregistrement des lignes détaillées dans 'ligne_ventes'
     if (insertedSale && insertedSale.length > 0) {
         const venteId = insertedSale[0].id;
         const ligneVentesPayload = cart.map(item => ({
@@ -462,17 +424,31 @@ async function checkout() {
         await supabase.from("ligne_ventes").insert(ligneVentesPayload);
     }
 
-    showNotification("Vente validée avec succès !", "success");
+    // 3. Décrémentation du stock pour chaque produit dans 'produits'
+    for (const item of cart) {
+        const product = inventory.find(p => p.id === item.id);
+        if (product) {
+            const newStock = Math.max(0, product.stock - item.qty);
+
+            await supabase
+                .from("produits")
+                .update({ stock: newStock })
+                .eq("id", item.id);
+        }
+    }
+
+    showNotification("Vente validée et stock mis à jour !", "success");
 
     cart = [];
     if (receivedEl) receivedEl.value = "";
 
+    // Rechargement des données fraîches
     await loadInventoryFromSupabase();
     await loadSalesFromSupabase();
 }
 
 /* =========================================================
-   GESTION DES STOCKS AVEC SUPABASE
+   GESTION DES PRODUITS ET STOCK AVEC SUPABASE
 ========================================================= */
 
 function renderStockTable() {
@@ -487,15 +463,16 @@ function renderStockTable() {
     inventory
         .filter(item => item.name.toLowerCase().includes(search))
         .forEach((item, index) => {
-            const lowStock = item.stock < 5;
-
+            const isLowStock = item.stock <= 5;
             list.innerHTML += `
-                <tr class="${lowStock ? "low-stock" : ""}">
+                <tr>
                     <td><strong>${escapeHtml(item.name)}</strong></td>
                     <td>${escapeHtml(item.cat)}</td>
                     <td>${formatMoney(item.price)}</td>
                     <td>
-                        ${item.stock} ${lowStock ? "⚠️" : ""}
+                        <span style="font-weight: bold; color: ${isLowStock ? '#ef4444' : '#10b981'};">
+                            ${item.stock}
+                        </span>
                     </td>
                     <td>
                         <button class="btn-sm" onclick="editProduct(${index})" title="Modifier">✏️</button>
@@ -504,8 +481,6 @@ function renderStockTable() {
                 </tr>
             `;
         });
-
-    updateLowStock();
 }
 
 async function saveProduct() {
@@ -515,12 +490,12 @@ async function saveProduct() {
     const stockInput = document.getElementById("new-stock");
     const editIndexInput = document.getElementById("edit-index");
 
-    if (!nameInput || !catInput || !priceInput || !stockInput) return;
+    if (!nameInput || !priceInput) return;
 
     const name = nameInput.value.trim();
-    const cat = catInput.value.trim();
+    const cat = catInput ? parseInt(catInput.value.trim()) || null : null;
     const price = parseFloat(priceInput.value);
-    const stock = parseInt(stockInput.value);
+    const stock = stockInput ? parseInt(stockInput.value) || 0 : 0;
     const editIndex = parseInt(editIndexInput ? editIndexInput.value : -1);
 
     if (!name) {
@@ -528,8 +503,8 @@ async function saveProduct() {
         return;
     }
 
-    if (Number.isNaN(price) || price < 0 || Number.isNaN(stock) || stock < 0) {
-        showNotification("Prix ou stock invalide.", "error");
+    if (Number.isNaN(price) || price < 0) {
+        showNotification("Prix invalide.", "error");
         return;
     }
 
@@ -537,7 +512,7 @@ async function saveProduct() {
         // Ajout dans 'produits'
         const { error } = await supabase
             .from("produits")
-            .insert([{ nom: name, category_id: parseInt(cat) || null, prix: price, stock: stock }]);
+            .insert([{ nom: name, category_id: cat, prix: price, stock: stock }]);
 
         if (error) {
             console.error("Erreur d'ajout Supabase :", error);
@@ -546,11 +521,11 @@ async function saveProduct() {
         }
         showNotification("Produit ajouté avec succès", "success");
     } else {
-        // Mettre à jour dans 'produits'
+        // Modification dans 'produits'
         const existingProduct = inventory[editIndex];
         const { error } = await supabase
             .from("produits")
-            .update({ nom: name, category_id: parseInt(cat) || null, prix: price, stock: stock })
+            .update({ nom: name, category_id: cat, prix: price, stock: stock })
             .eq("id", existingProduct.id);
 
         if (error) {
@@ -570,9 +545,9 @@ function editProduct(index) {
     if (!item) return;
 
     document.getElementById("new-name").value = item.name;
-    document.getElementById("new-cat").value = item.cat;
+    if (document.getElementById("new-cat")) document.getElementById("new-cat").value = item.cat;
     document.getElementById("new-price").value = item.price;
-    document.getElementById("new-stock").value = item.stock;
+    if (document.getElementById("new-stock")) document.getElementById("new-stock").value = item.stock;
     document.getElementById("edit-index").value = index;
 
     const title = document.getElementById("stock-form-title");
@@ -627,59 +602,8 @@ async function deleteProduct(index) {
     await loadInventoryFromSupabase();
 }
 
-async function restockProduct() {
-    const selectEl = document.getElementById("restock-select");
-    const qtyEl = document.getElementById("restock-qty");
-
-    if (!selectEl || !qtyEl) return;
-
-    const index = parseInt(selectEl.value);
-    const quantity = parseInt(qtyEl.value);
-
-    if (Number.isNaN(index) || Number.isNaN(quantity) || quantity <= 0 || !inventory[index]) {
-        showNotification("Veuillez saisir une quantité valide.", "error");
-        return;
-    }
-
-    const product = inventory[index];
-    const updatedStock = product.stock + quantity;
-
-    const { error } = await supabase
-        .from("produits")
-        .update({ stock: updatedStock })
-        .eq("id", product.id);
-
-    if (error) {
-        console.error("Erreur réapprovisionnement :", error);
-        showNotification("Erreur lors du réapprovisionnement.", "error");
-        return;
-    }
-
-    qtyEl.value = "";
-    showNotification("Approvisionnement effectué avec succès", "success");
-    await loadInventoryFromSupabase();
-}
-
-function updateLowStock() {
-    const container = document.getElementById("low-stock-list");
-    if (!container) return;
-
-    const products = inventory.filter(item => item.stock < 5);
-
-    if (products.length === 0) {
-        container.innerHTML = `<p style="color: var(--text-muted); font-size: 0.9rem;">Aucun produit en stock faible.</p>`;
-        return;
-    }
-
-    container.innerHTML = products.map(item => `
-        <div class="low-stock-item">
-            ⚠️ <strong>${escapeHtml(item.name)}</strong> — ${item.stock} restant(s)
-        </div>
-    `).join("");
-}
-
 /* =========================================================
-   ANALYTIQUES ET RAPPORTS
+   ANALYTIQUES ET HISTORIQUE
 ========================================================= */
 
 function renderSalesHistory() {
@@ -751,25 +675,12 @@ function updateDailyCash() {
 }
 
 function updateAnalytics() {
-    let totalStockValue = 0;
-    inventory.forEach(item => {
-        totalStockValue += (Number(item.price) || 0) * (Number(item.stock) || 0);
-    });
-
-    const lowStockCount = inventory.filter(item => item.stock < 5).length;
-
-    const elVal = document.getElementById("analytics-stock-value");
     const elRefs = document.getElementById("analytics-total-refs");
-    const elLow = document.getElementById("analytics-low-stock-count");
-
-    if (elVal) elVal.textContent = formatMoney(totalStockValue);
     if (elRefs) elRefs.textContent = inventory.length;
-    if (elLow) elLow.textContent = lowStockCount;
 }
 
 function updateDashboard() {
     updateDailyCash();
-    updateLowStock();
 }
 
 function formatDate(dateString) {
@@ -779,7 +690,7 @@ function formatDate(dateString) {
 }
 
 /* =========================================================
-   ATTACHEMENT GLOBAL POUR LES BOUTONS
+   ATTACHEMENT GLOBAL
 ========================================================= */
 
 window.toggleSidebar = toggleSidebar;
@@ -795,7 +706,6 @@ window.saveProduct = saveProduct;
 window.editProduct = editProduct;
 window.resetStockForm = resetStockForm;
 window.deleteProduct = deleteProduct;
-window.restockProduct = restockProduct;
 window.renderStockTable = renderStockTable;
 
 window.logout = async function() {
