@@ -502,37 +502,7 @@ async function deleteProduct(index) {
    ANALYTIQUES ET HISTORIQUE
 ========================================================= */
 
-function renderSalesHistory() {
-    const list = document.getElementById("sales-history-list");
-    if (!list) return;
 
-    list.innerHTML = "";
-
-    if (salesHistory.length === 0) {
-        list.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Aucune vente enregistrée.</td></tr>`;
-        updateDailyCash();
-        return;
-    }
-
-    salesHistory.forEach(sale => {
-        const articleDetails = sale.items
-            .map(item => `${item.qty}x ${escapeHtml(item.name)}`)
-            .join(", ");
-
-        list.innerHTML += `
-            <tr>
-                <td>${formatDate(sale.date)}</td>
-                <td><span style="font-weight: 500; color: var(--text-muted);">${sale.time}</span></td>
-                <td>${articleDetails}</td>
-                <td><strong>${formatMoney(sale.total)}</strong></td>
-                <td>${formatMoney(sale.received)}</td>
-                <td>${formatMoney(sale.change)}</td>
-            </tr>
-        `;
-    });
-
-    updateDailyCash();
-}
 
 function getTodaySales() {
     const today = new Date().toISOString().split("T")[0];
@@ -781,6 +751,10 @@ async function checkout() {
    2. CHARGER L'HISTORIQUE ET RECONSTITUER LES ARTICLES VENDUS
 ========================================================= */
 
+/* =========================================================
+   2. CHARGER L'HISTORIQUE ET AFFICHER LES ARTICLES VENDUS
+========================================================= */
+
 async function loadSalesFromSupabase() {
     if (!supabase) return;
 
@@ -803,7 +777,7 @@ async function loadSalesFromSupabase() {
             return;
         }
 
-        // 2. Récupération de toutes les lignes de ventes
+        // 2. Récupération des lignes de ventes avec les produits associées
         const saleIds = sales.map(s => s.id);
         const { data: lines, error: linesError } = await supabase
             .from("ligne_ventes")
@@ -814,14 +788,14 @@ async function loadSalesFromSupabase() {
             console.error("Erreur chargement ligne_ventes :", linesError);
         }
 
-        // Groupement des lignes par id de vente
+        // Regroupement des articles par vente
         const linesBySale = {};
         (lines || []).forEach(line => {
             if (!linesBySale[line.vente_id]) {
                 linesBySale[line.vente_id] = [];
             }
             
-            // Extraction du nom du produit
+            // Récupération du nom du produit (soit par relation Supabase, soit dans l'inventaire local)
             let productName = "Produit";
             if (line.produits && line.produits.nom) {
                 productName = line.produits.nom;
@@ -837,7 +811,7 @@ async function loadSalesFromSupabase() {
             });
         });
 
-        // 3. Reconstruction de l'historique pour l'affichage
+        // 3. Formattage de salesHistory
         salesHistory = sales.map(sale => {
             const dateObj = new Date(sale.created_at);
             const totalVal = Number(sale.total) || 0;
@@ -858,6 +832,43 @@ async function loadSalesFromSupabase() {
         updateDashboard();
 
     } catch (err) {
-        console.error("Erreur globale dans loadSalesFromSupabase :", err);
+        console.error("Erreur dans loadSalesFromSupabase :", err);
     }
+}
+
+function renderSalesHistory() {
+    const list = document.getElementById("sales-history-list");
+    if (!list) return;
+
+    list.innerHTML = "";
+
+    if (salesHistory.length === 0) {
+        list.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Aucune vente enregistrée.</td></tr>`;
+        updateDailyCash();
+        return;
+    }
+
+    salesHistory.forEach(sale => {
+        // Si la vente n'a aucun article lié dans ligne_ventes
+        let articleDetails = "—";
+        
+        if (sale.items && sale.items.length > 0) {
+            articleDetails = sale.items
+                .map(item => `${item.qty}x ${escapeHtml(item.name)}`)
+                .join(", ");
+        }
+
+        list.innerHTML += `
+            <tr>
+                <td>${formatDate(sale.date)}</td>
+                <td><span style="font-weight: 500; color: var(--text-muted);">${sale.time}</span></td>
+                <td>${articleDetails}</td>
+                <td><strong>${formatMoney(sale.total)}</strong></td>
+                <td>${formatMoney(sale.received)}</td>
+                <td>${formatMoney(sale.change)}</td>
+            </tr>
+        `;
+    });
+
+    updateDailyCash();
 }
