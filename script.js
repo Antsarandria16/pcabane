@@ -61,35 +61,7 @@ async function loadInventoryFromSupabase() {
     updateAnalytics();
 }
 
-async function loadSalesFromSupabase() {
-    if (!supabase) return;
 
-    const { data, error } = await supabase
-        .from("ventes")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-    if (error) {
-        console.error("Erreur de chargement des ventes :", error);
-        return;
-    }
-
-    salesHistory = (data || []).map(sale => {
-        const dateObj = new Date(sale.created_at || sale.date);
-        return {
-            id: sale.id,
-            date: dateObj.toISOString().split("T")[0],
-            time: dateObj.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-            items: typeof sale.items === "string" ? JSON.parse(sale.items) : (sale.items || []),
-            total: sale.total,
-            received: sale.received || sale.total,
-            change: sale.change_amount || sale.change || 0
-        };
-    });
-
-    renderSalesHistory();
-    updateDashboard();
-}
 
 /* =========================================================
    NAVIGATION & UTILITAIRES
@@ -372,90 +344,6 @@ function cancelCart() {
    ENCAISSEMENT AVEC DECREMENTATION DU STOCK SUR SUPABASE
 ========================================================= */
 
-async function checkout() {
-    if (cart.length === 0) {
-        showNotification("Le panier est vide.", "error");
-        return;
-    }
-
-    const total = getCartTotal();
-    const receivedEl = document.getElementById("amount-received");
-    const received = parseFloat(receivedEl ? receivedEl.value : 0) || 0;
-
-    if (received < total) {
-        showNotification("Montant reçu insuffisant.", "error");
-        return;
-    }
-
-    // 1. Inserer dans 'ventes' (Transmettre un objet/array directement si la colonne est jsonb)
-    const cartItems = cart.map(item => ({ 
-        id: item.id,
-        name: item.name, 
-        qty: item.qty, 
-        unitPrice: item.unitPrice 
-    }));
-
-    const salePayload = {
-        total: total,
-        received: received,
-        change_amount: received - total,
-        items: cartItems, // Objet/Array JavaScript (compatible json/jsonb)
-        created_at: new Date().toISOString()
-    };
-
-    const { data: insertedSale, error: saleError } = await supabase
-        .from("ventes")
-        .insert([salePayload])
-        .select();
-
-    if (saleError) {
-        console.error("Erreur enregistrement vente :", saleError);
-        showNotification(`Erreur lors de la vente: ${saleError.message}`, "error");
-        return;
-    }
-
-    // 2. Inserer dans 'ligne_ventes' (si la table existe)
-    if (insertedSale && insertedSale.length > 0) {
-        const venteId = insertedSale[0].id;
-        const ligneVentesPayload = cart.map(item => ({
-            vente_id: venteId,
-            produit_id: item.id,
-            quantite: item.qty,
-            prix_unitaire: item.unitPrice
-        }));
-
-        const { error: ligneError } = await supabase.from("ligne_ventes").insert(ligneVentesPayload);
-        if (ligneError) {
-            console.warn("Erreur enregistrement lignes de vente :", ligneError);
-        }
-    }
-
-    // 3. Décrémenter le stock dans 'produits'
-    for (const item of cart) {
-        const product = inventory.find(p => p.id === item.id);
-        if (product) {
-            const newStock = Math.max(0, product.stock - item.qty);
-
-            const { error: stockError } = await supabase
-                .from("produits")
-                .update({ stock: newStock })
-                .eq("id", item.id);
-
-            if (stockError) {
-                console.error(`Erreur mise à jour stock produit ${item.id} :`, stockError);
-            }
-        }
-    }
-
-    showNotification("Vente validée et stock mis à jour !", "success");
-
-    cart = [];
-    if (receivedEl) receivedEl.value = "";
-
-    // Recharger les données
-    await loadInventoryFromSupabase();
-    await loadSalesFromSupabase();
-}
 
 /* =========================================================
    GESTION DES PRODUITS ET STOCK AVEC SUPABASE
@@ -798,4 +686,144 @@ async function restockProduct() {
         console.error("Erreur lors de l'approvisionnement :", err);
         showNotification(`Échec de l'approvisionnement : ${err.message || 'Erreur inconnue'}`, "error");
     }
+}
+
+/* =========================================================
+   1. VALIDER LA VENTE (SANS COLONNE ITEMS)
+========================================================= */
+
+async function checkout() {
+    if (cart.length === 0) {
+        showNotification("Le panier est vide.", "error");
+        return;
+    }
+
+    const total = getCartTotal();
+    const receivedEl = document.getElementById("amount-received");
+    const received = parseFloat(receivedEl ? receivedEl.value : 0) || 0;
+
+    if (received < total) {
+        showNotification("Montant reçu insuffisant.", "error");
+        return;
+    }
+
+    // Récupération de l'utilisateur connecté s'il existe
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // Payload envoyé à 'ventes' : uniquement les colonnes existantes
+    const salePayload = {
+        total: total,
+        received: received,
+        change_amount: received - total,
+        created_at: new Date().toISOString(),
+        user_id: user ? user.id : null
+    };
+
+    // 1. Enregistrement de la vente principale
+    const { data: insertedSale, error: saleError } = await supabase
+        .from("ventes")
+        .insert([salePayload])
+        .select();
+
+    if (saleError) {
+        console.error("Erreur enregistrement vente :", saleError);
+        showNotification(`Erreur lors de la vente: ${saleError.message}`, "error");
+        return;
+    }
+
+    // 2. Enregistrement des articles vendus dans 'ligne_ventes'
+    if (insertedSale && insertedSale.length > 0) {
+        const venteId = insertedSale[0].id;
+        const ligneVentesPayload = cart.map(item => ({
+            vente_id: venteId,
+            produit_id: item.id,
+            quantite: item.qty,
+            prix_unitaire: item.unitPrice
+        }));
+
+        const { error: ligneError } = await supabase
+            .from("ligne_ventes")
+            .insert(ligneVentesPayload);
+
+        if (ligneError) {
+            console.error("Erreur enregistrement ligne_ventes :", ligneError);
+        }
+    }
+
+    // 3. Mise à jour du stock dans la table 'produits'
+    for (const item of cart) {
+        const product = inventory.find(p => p.id === item.id);
+        if (product) {
+            const newStock = Math.max(0, product.stock - item.qty);
+
+            await supabase
+                .from("produits")
+                .update({ stock: newStock })
+                .eq("id", item.id);
+        }
+    }
+
+    showNotification("Vente validée et stock mis à jour !", "success");
+
+    // Réinitialisation du panier
+    cart = [];
+    if (receivedEl) receivedEl.value = "";
+
+    // Rechargement des données fraîches
+    await loadInventoryFromSupabase();
+    await loadSalesFromSupabase();
+}
+
+/* =========================================================
+   2. CHARGER L'HISTORIQUE (EN RÉCUPÉRANT LES LIGNES DE VENTE)
+========================================================= */
+
+async function loadSalesFromSupabase() {
+    if (!supabase) return;
+
+    // Jointure automatique pour récupérer les produits vendus via ligne_ventes
+    const { data, error } = await supabase
+        .from("ventes")
+        .select(`
+            id,
+            created_at,
+            total,
+            received,
+            change_amount,
+            ligne_ventes (
+                quantite,
+                prix_unitaire,
+                produits ( nom )
+            )
+        `)
+        .order("created_at", { ascending: false });
+
+    if (error) {
+        console.error("Erreur de chargement des ventes :", error);
+        return;
+    }
+
+    salesHistory = (data || []).map(sale => {
+        const dateObj = new Date(sale.created_at);
+        
+        // Reconstitution de la liste des produits pour l'affichage
+        const formattedItems = (sale.ligne_ventes || []).map(lv => ({
+            name: lv.produits ? lv.produits.nom : "Produit",
+            qty: lv.quantite,
+            unitPrice: lv.prix_unitaire
+        }));
+
+        return {
+            id: sale.id,
+            date: dateObj.toISOString().split("T")[0],
+            time: dateObj.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+            items: formattedItems,
+            total: sale.total,
+            received: sale.received || sale.total,
+            change: sale.change_amount || 0
+        };
+    });
+
+    renderSalesHistory();
+    updateDashboard();
 }
