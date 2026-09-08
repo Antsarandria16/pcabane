@@ -37,7 +37,6 @@ async function loadInventoryFromSupabase() {
         return;
     }
 
-    // Récupération des colonnes id, nom, category_id, prix, stock
     const { data, error } = await supabase
         .from("produits")
         .select("*")
@@ -49,13 +48,12 @@ async function loadInventoryFromSupabase() {
         return;
     }
 
-    // Mapping incluant le stock réel de Supabase
     inventory = (data || []).map(item => ({
         id: item.id,
-        name: item.nom,                             // Colonne 'nom'
-        cat: item.category_id || "Général",         // Colonne 'category_id'
-        price: item.prix,                           // Colonne 'prix'
-        stock: item.stock !== null && item.stock !== undefined ? item.stock : 0 // Colonne 'stock'
+        name: item.nom,
+        cat: item.category_id || "Général",
+        price: item.prix,
+        stock: item.stock !== null && item.stock !== undefined ? item.stock : 0
     }));
 
     renderStockTable();
@@ -63,7 +61,6 @@ async function loadInventoryFromSupabase() {
     updateAnalytics();
 }
 
-// Charger l'historique des ventes depuis Supabase
 async function loadSalesFromSupabase() {
     if (!supabase) return;
 
@@ -212,12 +209,12 @@ function updateDatalists() {
     if (!datalist) return;
     datalist.innerHTML = "";
 
-    if (select) select.innerHTML = "";
+    if (select) select.innerHTML = `<option value="">-- Sélectionner un produit --</option>`;
 
-    inventory.forEach((item, index) => {
+    inventory.forEach(item => {
         datalist.innerHTML += `<option value="${escapeHtml(item.name)}">`;
         if (select) {
-            select.innerHTML += `<option value="${index}">${escapeHtml(item.name)}</option>`;
+            select.innerHTML += `<option value="${item.id}">${escapeHtml(item.name)}</option>`;
         }
     });
 }
@@ -248,7 +245,6 @@ function addToCart() {
         return;
     }
 
-    // Vérification de la réserve en stock
     const existingInCart = cart.find(item => item.id === product.id);
     const totalRequested = (existingInCart ? existingInCart.qty : 0) + qty;
 
@@ -391,7 +387,6 @@ async function checkout() {
         return;
     }
 
-    // 1. Enregistrement de la vente globale dans 'ventes'
     const salePayload = {
         total: total,
         received: received,
@@ -411,7 +406,6 @@ async function checkout() {
         return;
     }
 
-    // 2. Enregistrement des lignes détaillées dans 'ligne_ventes'
     if (insertedSale && insertedSale.length > 0) {
         const venteId = insertedSale[0].id;
         const ligneVentesPayload = cart.map(item => ({
@@ -424,7 +418,6 @@ async function checkout() {
         await supabase.from("ligne_ventes").insert(ligneVentesPayload);
     }
 
-    // 3. Décrémentation du stock pour chaque produit dans 'produits'
     for (const item of cart) {
         const product = inventory.find(p => p.id === item.id);
         if (product) {
@@ -442,7 +435,6 @@ async function checkout() {
     cart = [];
     if (receivedEl) receivedEl.value = "";
 
-    // Rechargement des données fraîches
     await loadInventoryFromSupabase();
     await loadSalesFromSupabase();
 }
@@ -509,7 +501,6 @@ async function saveProduct() {
     }
 
     if (editIndex === -1) {
-        // Ajout dans 'produits'
         const { error } = await supabase
             .from("produits")
             .insert([{ nom: name, category_id: cat, prix: price, stock: stock }]);
@@ -521,7 +512,6 @@ async function saveProduct() {
         }
         showNotification("Produit ajouté avec succès", "success");
     } else {
-        // Modification dans 'produits'
         const existingProduct = inventory[editIndex];
         const { error } = await supabase
             .from("produits")
@@ -690,7 +680,7 @@ function formatDate(dateString) {
 }
 
 /* =========================================================
-   ATTACHEMENT GLOBAL
+   ATTACHEMENT GLOBAL ET AUTH
 ========================================================= */
 
 window.toggleSidebar = toggleSidebar;
@@ -707,6 +697,7 @@ window.editProduct = editProduct;
 window.resetStockForm = resetStockForm;
 window.deleteProduct = deleteProduct;
 window.renderStockTable = renderStockTable;
+window.restockProduct = restockProduct;
 
 window.logout = async function() {
     if (supabase && supabase.auth) {
@@ -714,14 +705,6 @@ window.logout = async function() {
     }
     window.location.href = 'index.html';
 };
-
-/* =========================================================
-   FONCTION D'APPROVISIONNEMENT (RESTOCK)
-========================================================= */
-
-/* =========================================================
-   FONCTION D'APPROVISIONNEMENT (RESTOCK)
-========================================================= */
 
 /* =========================================================
    FONCTION D'APPROVISIONNEMENT (RESTOCK) - CORRIGÉE
@@ -732,7 +715,7 @@ async function restockProduct() {
     const inputElem = document.getElementById("restock-qty");
 
     if (!selectElem || !inputElem) {
-        alert("Erreur : Champs du formulaire d'approvisionnement introuvables.");
+        showNotification("Erreur : Champs d'approvisionnement introuvables.", "error");
         return;
     }
 
@@ -740,47 +723,40 @@ async function restockProduct() {
     const amountToAdd = parseInt(inputElem.value, 10);
 
     if (!productId || isNaN(amountToAdd) || amountToAdd <= 0) {
-        alert("Veuillez choisir un produit et saisir une quantité valide (supérieure à 0).");
+        showNotification("Choisissez un produit et saisissez une quantité valide.", "error");
         return;
     }
 
-    const client = window.supabaseClient;
+    const client = supabase || window.supabaseClient;
     if (!client) {
-        alert("Erreur de connexion à Supabase.");
+        showNotification("Erreur de connexion à Supabase.", "error");
         return;
     }
 
     try {
-        // 1. Recherche du produit (compatible avec ID UUID ou Nom)
-        let product = null;
-
-        // Tentative par ID
-        let { data, error } = await client
+        let { data: product, error } = await client
             .from("produits")
             .select("id, nom, stock")
             .eq("id", productId)
             .maybeSingle();
 
-        // Si non trouvé par ID, tentative par Nom
-        if (!data) {
+        if (!product) {
             const { data: dataByName } = await client
                 .from("produits")
                 .select("id, nom, stock")
                 .eq("nom", productId)
                 .maybeSingle();
-            data = dataByName;
+            product = dataByName;
         }
 
-        if (!data) {
-            alert("Erreur : Le produit sélectionné est introuvable dans la base de données.");
+        if (!product) {
+            showNotification("Erreur : Produit introuvable dans la base.", "error");
             return;
         }
 
-        product = data;
         const currentStock = parseInt(product.stock || 0, 10);
         const newStock = currentStock + amountToAdd;
 
-        // 2. Mettre à jour le stock dans Supabase
         const { error: updateErr } = await client
             .from("produits")
             .update({ stock: newStock })
@@ -788,7 +764,6 @@ async function restockProduct() {
 
         if (updateErr) throw updateErr;
 
-        // 3. Enregistrer l'historique d'approvisionnement
         await client.from("stock_history").insert([{
             produit_id: product.id,
             quantite_ajoutee: amountToAdd,
@@ -796,17 +771,13 @@ async function restockProduct() {
             note: `Approvisionnement de ${amountToAdd} unité(s)`
         }]).then(() => {}).catch(err => console.warn("Note historique :", err));
 
-        // 4. Réinitialisation et rechargement de l'interface
         inputElem.value = "";
-        alert(`Stock mis à jour avec succès pour "${product.nom}" ! Nouveau stock : ${newStock}`);
+        showNotification(`Stock mis à jour pour "${product.nom}" (+${amountToAdd})`, "success");
 
-        // Recharger les données si vos fonctions d'affichage existent
-        if (typeof loadStockTable === 'function') loadStockTable();
-        if (typeof loadDashboardStats === 'function') loadDashboardStats();
-        if (typeof renderStockTable === 'function') renderStockTable();
+        await loadInventoryFromSupabase();
 
     } catch (err) {
         console.error("Erreur lors de l'approvisionnement :", err);
-        alert(`Échec de l'approvisionnement : ${err.message || 'Erreur inconnue'}`);
+        showNotification(`Échec de l'approvisionnement : ${err.message || 'Erreur inconnue'}`, "error");
     }
 }
