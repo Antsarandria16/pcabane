@@ -719,28 +719,48 @@ window.logout = async function() {
    FONCTION D'APPROVISIONNEMENT (RESTOCK)
 ========================================================= */
 
-async function restockProduct(productId, amountToAdd) {
-    if (!productId || amountToAdd <= 0) {
-        alert("Veuillez saisir une quantité valide.");
+/* =========================================================
+   FONCTION D'APPROVISIONNEMENT (RESTOCK)
+========================================================= */
+
+async function restockProduct() {
+    // 1. Récupération des éléments du formulaire
+    const selectElem = document.getElementById("restock-select");
+    const inputElem = document.getElementById("restock-qty");
+
+    if (!selectElem || !inputElem) {
+        alert("Erreur : Champs du formulaire d'approvisionnement introuvables.");
         return;
     }
 
-    const client = getSupabaseClient();
-    if (!client) return;
+    const productId = selectElem.value;
+    const amountToAdd = parseInt(inputElem.value, 10);
+
+    // 2. Contrôle de validité
+    if (!productId || isNaN(amountToAdd) || amountToAdd <= 0) {
+        alert("Veuillez choisir un produit et saisir une quantité valide (supérieure à 0).");
+        return;
+    }
+
+    const client = window.supabaseClient || (typeof getSupabaseClient === 'function' ? getSupabaseClient() : null);
+    if (!client) {
+        alert("Erreur de connexion à Supabase.");
+        return;
+    }
 
     try {
-        // 1. Récupérer le stock actuel
+        // 3. Récupérer le stock actuel du produit
         const { data: product, error: fetchErr } = await client
             .from("produits")
-            .select("stock")
+            .select("stock, nom")
             .eq("id", productId)
             .single();
 
         if (fetchErr) throw fetchErr;
 
-        const newStock = (product.stock || 0) + parseInt(amountToAdd, 10);
+        const newStock = (product.stock || 0) + amountToAdd;
 
-        // 2. Mettre à jour le stock dans la table produits
+        // 4. Mettre à jour le stock dans Supabase
         const { error: updateErr } = await client
             .from("produits")
             .update({ stock: newStock })
@@ -748,23 +768,25 @@ async function restockProduct(productId, amountToAdd) {
 
         if (updateErr) throw updateErr;
 
-        // 3. (Optionnel) Enregistrer dans l'historique de stock
+        // 5. Enregistrer le mouvement dans l'historique du stock (stock_history)
         await client.from("stock_history").insert([{
             produit_id: productId,
-            quantite_ajoutee: parseInt(amountToAdd, 10)
+            quantite_ajoutee: amountToAdd,
+            type: "appro",
+            note: `Approvisionnement de ${amountToAdd} unité(s)`
         }]);
 
-        alert("Approvisionnement réussi !");
-        
-        // Recharger les données à l'écran
-        if (typeof loadInventoryFromSupabase === 'function') {
-            loadInventoryFromSupabase();
-        } else {
-            location.reload();
-        }
+        // Reset du champ quantité et retour visuel
+        inputElem.value = "";
+        alert(`Stock mis à jour pour ${product.nom} ! Nouveau stock : ${newStock}`);
+
+        // Recharger les tableaux du tableau de bord et des stocks
+        if (typeof loadStockTable === 'function') loadStockTable();
+        if (typeof loadDashboardStats === 'function') loadDashboardStats();
+        if (typeof loadStockHistory === 'function') loadStockHistory();
 
     } catch (err) {
-        console.error("Erreur lors de l'approvisionnement :", err);
-        alert(`Erreur : ${err.message || 'Impossible de mettre à jour le stock'}`);
+        console.error("Erreur d'approvisionnement :", err);
+        alert(`Échec de l'approvisionnement : ${err.message || 'Erreur inconnue'}`);
     }
 }
