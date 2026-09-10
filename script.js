@@ -78,7 +78,7 @@ async function checkout() {
         if (insertedSale && insertedSale.length > 0) {
             const venteId = insertedSale[0].id;
 
-            // 2. Enregistrement des lignes
+            // 2. Enregistrement des lignes de vente
             const ligneVentesPayload = cart.map(item => ({
                 vente_id: venteId,
                 produit_id: item.id,
@@ -89,44 +89,44 @@ async function checkout() {
 
             await supabase.from("ligne_ventes").insert(ligneVentesPayload);
 
-            // 3. Mise à jour des stocks + Historique
+            // 3. Mise à jour des stocks ET enregistrement dans stock_history
             for (const item of cart) {
                 const product = inventory.find(p => p.id === item.id);
                 if (product) {
                     const oldStock = Number(product.stock) || 0;
                     const newStock = Math.max(0, oldStock - item.qty);
 
+                    // a. Mise à jour de la table 'produits'
                     await supabase
                         .from("produits")
                         .update({ stock: newStock })
                         .eq("id", item.id);
 
-                    await supabase
+                    // b. Enregistrement dans 'stock_history' (avec la structure Supabase exacte)
+                    const stockPayload = {
+                        product_name: product.name || product.nom,
+                        type: "VENTE",
+                        quantity_change: -item.qty,
+                        new_stock: newStock,
+                        notes: `Vente #${venteId}`,
+                        created_at: new Date().toISOString()
+                    };
+
+                    const { error: stockHistoryError } = await supabase
                         .from("stock_history")
-                        .insert([{
-                            produit_id: item.id,
-                            type_mouvement: "VENTE",
-                            quantite: -item.qty,
-                            ancien_stock: oldStock,
-                            nouveau_stock: newStock,
-                            motif: `Vente #${venteId}`,
-                            created_at: new Date().toISOString(),
-                            user_id: user ? user.id : null
-                        }]);
+                        .insert([stockPayload]);
+
+                    if (stockHistoryError) {
+                        console.error("Erreur insertion stock_history :", stockHistoryError.message);
+                    }
                 }
             }
         }
 
         showNotification("Vente effectuée avec succès !", "success");
 
-        // =========================================================
-        // REINITIALISATION DE L'INTERFACE (PANIER ET FORMULAIRE)
-        // =========================================================
-        
-        // 1. Vider le tableau JS
+        // 4. Réinitialisation de l'interface
         cart = [];
-
-        // 2. Réinitialiser les champs de saisie du client
         if (receivedEl) receivedEl.value = "";
         
         const changeDisplayEl = document.getElementById("change-amount");
@@ -135,7 +135,6 @@ async function checkout() {
         const totalDisplayEl = document.getElementById("cart-total");
         if (totalDisplayEl) totalDisplayEl.textContent = "0,00 Ar";
 
-        // 3. Réinitialiser les champs de gauche (Ajouter au panier)
         const searchInput = document.getElementById("product-search");
         if (searchInput) searchInput.value = "";
         
@@ -145,18 +144,16 @@ async function checkout() {
         const qtyInput = document.getElementById("product-qty");
         if (qtyInput) qtyInput.value = "1";
 
-        // 4. Mettre à jour la table HTML du panier
         if (typeof renderCart === "function") {
             renderCart();
         } else {
-            // Sécurité si renderCart n'existe pas : vider le <tbody> directement
             const cartTableBody = document.querySelector("#cart-table tbody") || document.getElementById("cart-list");
             if (cartTableBody) {
                 cartTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--text-muted);">Panier vide</td></tr>`;
             }
         }
 
-        // Recharger les données à jour
+        // Rechargement des données à jour
         await loadInventoryFromSupabase();
         await loadSalesFromSupabase();
 
