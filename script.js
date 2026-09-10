@@ -30,7 +30,13 @@ window.addEventListener("DOMContentLoaded", async () => {
    1. VALIDER LA VENTE (AVEC HISTORIQUE STOCK ET LIGNE_VENTES)
 ========================================================= */
 
+// Variable globale pour empêcher les validations multiples simultanées
+let isCheckoutProcessing = false;
+
 async function checkout() {
+    // 1. Empêcher le double-clic instantané
+    if (isCheckoutProcessing) return;
+
     if (cart.length === 0) {
         showNotification("Le panier est vide.", "error");
         return;
@@ -45,10 +51,17 @@ async function checkout() {
         return;
     }
 
+    // Activer le verrou
+    isCheckoutProcessing = true;
+
+    // Optionnel : Désactiver visuellement le bouton de validation s'il existe
+    const checkoutBtn = document.getElementById("checkout-btn");
+    if (checkoutBtn) checkoutBtn.disabled = true;
+
     try {
         const { data: { user } } = await supabase.auth.getUser();
 
-        // 1. Enregistrement de la vente principale
+        // Enregistrement de la vente principale
         const salePayload = {
             total: total,
             change_amount: received - total,
@@ -62,84 +75,79 @@ async function checkout() {
             .select();
 
         if (saleError) {
-            alert("Erreur VENTE : " + saleError.message);
-            console.error("Erreur Vente:", saleError);
+            showNotification(`Erreur Vente: ${saleError.message}`, "error");
             return;
         }
 
-        if (!insertedSale || insertedSale.length === 0) {
-            alert("Erreur : Impossible de récupérer l'ID de la vente.");
-            return;
-        }
+        if (insertedSale && insertedSale.length > 0) {
+            const venteId = insertedSale[0].id;
 
-        const venteId = insertedSale[0].id;
+            // Préparation des lignes de ventes
+            const ligneVentesPayload = cart.map(item => ({
+                vente_id: venteId,
+                produit_id: item.id,
+                quantite: item.qty,
+                prix_unitaire: item.unitPrice,
+                total_ligne: item.qty * item.unitPrice
+            }));
 
-        // 2. Préparation des lignes de vente
-        const ligneVentesPayload = cart.map(item => ({
-            vente_id: venteId,
-            produit_id: item.id,
-            quantite: item.qty,
-            prix_unitaire: item.unitPrice,
-            total_ligne: item.qty * item.unitPrice
-        }));
+            const { error: ligneError } = await supabase
+                .from("ligne_ventes")
+                .insert(ligneVentesPayload);
 
-        const { error: ligneError } = await supabase
-            .from("ligne_ventes")
-            .insert(ligneVentesPayload);
+            if (ligneError) {
+                console.error("Erreur Ligne Ventes:", ligneError);
+            }
 
-        if (ligneError) {
-            alert("Erreur LIGNE_VENTES : " + ligneError.message);
-            console.error("Erreur Ligne Ventes:", ligneError);
-            return;
-        }
+            // Mise à jour des stocks et enregistrement historique
+            for (const item of cart) {
+                const product = inventory.find(p => p.id === item.id);
+                if (product) {
+                    const oldStock = Number(product.stock) || 0;
+                    const newStock = Math.max(0, oldStock - item.qty);
 
-        // 3. Mise à jour du stock + Enregistrement dans stock_history
-        for (const item of cart) {
-            const product = inventory.find(p => p.id === item.id);
-            if (product) {
-                const oldStock = Number(product.stock) || 0;
-                const newStock = Math.max(0, oldStock - item.qty);
+                    await supabase
+                        .from("produits")
+                        .update({ stock: newStock })
+                        .eq("id", item.id);
 
-                // a. Mise à jour du produit
-                await supabase
-                    .from("produits")
-                    .update({ stock: newStock })
-                    .eq("id", item.id);
-
-                // b. Insertion dans la table stock_history
-                const stockHistoryPayload = {
-                    produit_id: item.id,
-                    type_mouvement: "VENTE",
-                    quantite: -item.qty,
-                    ancien_stock: oldStock,
-                    nouveau_stock: newStock,
-                    motif: `Vente #${venteId}`,
-                    created_at: new Date().toISOString(),
-                    user_id: user ? user.id : null
-                };
-
-                const { error: historyError } = await supabase
-                    .from("stock_history")
-                    .insert([stockHistoryPayload]);
-
-                if (historyError) {
-                    console.error("Erreur historique stock :", historyError.message);
+                    await supabase
+                        .from("stock_history")
+                        .insert([{
+                            produit_id: item.id,
+                            type_mouvement: "VENTE",
+                            quantite: -item.qty,
+                            ancien_stock: oldStock,
+                            nouveau_stock: newStock,
+                            motif: `Vente #${venteId}`,
+                            created_at: new Date().toISOString(),
+                            user_id: user ? user.id : null
+                        }]);
                 }
             }
         }
 
-        alert("Vente validée, articles enregistrés et historique de stock mis à jour !");
+        showNotification("Vente effectuée avec succès !", "success");
 
-        // Réinitialisation du panier
+        // 2. Vider le panier et mettre à jour le DOM immédiatement
         cart = [];
         if (receivedEl) receivedEl.value = "";
+        
+        // Appelez ici votre fonction qui rafraîchit la liste du panier à l'écran
+        if (typeof renderCart === "function") {
+            renderCart();
+        }
 
+        // Rechargement des données de la base
         await loadInventoryFromSupabase();
         await loadSalesFromSupabase();
 
     } catch (err) {
-        alert("Erreur inattendue : " + err.message);
-        console.error("Catch error:", err);
+        console.error("Erreur globale checkout :", err);
+    } finally {
+        // Déverrouiller le bouton une fois l'opération terminée
+        isCheckoutProcessing = false;
+        if (checkoutBtn) checkoutBtn.disabled = false;
     }
 }
 /* =========================================================
