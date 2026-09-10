@@ -40,11 +40,9 @@ window.addEventListener("DOMContentLoaded", async () => {
    - Trace chaque mouvement dans 'stock_history'
    - Vide le panier et réinitialise l'interface utilisateur
 ========================================================= */
-
 let isCheckoutProcessing = false;
 
 async function checkout() {
-    // 1. Empêcher les clics multiples simultanés
     if (isCheckoutProcessing) return;
 
     if (!cart || cart.length === 0) {
@@ -61,18 +59,14 @@ async function checkout() {
         return;
     }
 
-    // Activer le verrou d'exécution
     isCheckoutProcessing = true;
     const checkoutBtn = document.getElementById("checkout-btn");
     if (checkoutBtn) checkoutBtn.disabled = true;
 
     try {
-        // Récupération de l'utilisateur connecté s'il existe
         const { data: { user } } = await supabase.auth.getUser();
 
-        // ---------------------------------------------------------
-        // A. ENREGISTREMENT DE LA VENTE PRINCIPALE
-        // ---------------------------------------------------------
+        // 1. VENTE PRINCIPALE
         const salePayload = {
             total: total,
             change_amount: received - total,
@@ -86,21 +80,13 @@ async function checkout() {
             .select();
 
         if (saleError) {
-            console.error("Erreur enregistrement vente :", saleError);
-            alert("Erreur lors de la création de la vente : " + saleError.message);
-            return;
-        }
-
-        if (!insertedSale || insertedSale.length === 0) {
-            alert("Erreur : Impossible de récupérer l'identifiant de la vente créée.");
+            alert("Erreur Vente : " + saleError.message);
             return;
         }
 
         const venteId = insertedSale[0].id;
 
-        // ---------------------------------------------------------
-        // B. ENREGISTREMENT DES ARTICLES DANS 'LIGNE_VENTES'
-        // ---------------------------------------------------------
+        // 2. LIGNES DE VENTES
         const ligneVentesPayload = cart.map(item => ({
             vente_id: venteId,
             produit_id: item.id,
@@ -109,66 +95,51 @@ async function checkout() {
             total_ligne: item.qty * item.unitPrice
         }));
 
-        const { error: ligneError } = await supabase
-            .from("ligne_ventes")
-            .insert(ligneVentesPayload);
+        await supabase.from("ligne_ventes").insert(ligneVentesPayload);
 
-        if (ligneError) {
-            console.error("Erreur enregistrement ligne_ventes :", ligneError);
-            alert("Erreur articles vendus (ligne_ventes) : " + ligneError.message);
-        }
-
-        // ---------------------------------------------------------
-        // C. MISE À JOUR STOCK ET TRAÇABILITÉ 'STOCK_HISTORY'
-        // ---------------------------------------------------------
+        // 3. MISE À JOUR DU STOCK ET HISTORIQUE (RECHERCHE SOUPLE)
         for (const item of cart) {
-            const product = inventory.find(p => p.id === item.id);
-            if (product) {
-                const oldStock = Number(product.stock) || 0;
-                const newStock = Math.max(0, oldStock - item.qty);
-                const productName = product.name || product.nom || "Produit";
+            // Comparaison souple en convertissant les ID en String
+            const product = inventory.find(p => String(p.id) === String(item.id));
+            
+            const oldStock = product ? (Number(product.stock) || 0) : 0;
+            const newStock = Math.max(0, oldStock - item.qty);
+            
+            // Récupération du nom (du panier ou du produit)
+            const productName = item.name || (product ? (product.name || product.nom) : "Produit");
 
-                // 1. Décrémenter le stock dans la table 'produits'
-                const { error: updateError } = await supabase
+            // a. Mettre à jour la table produits si le produit existe
+            if (product) {
+                await supabase
                     .from("produits")
                     .update({ stock: newStock })
-                    .eq("id", item.id);
+                    .eq("id", product.id);
+            }
 
-                if (updateError) {
-                    console.error(`Erreur mise à jour stock produit ${item.id} :`, updateError);
-                }
+            // b. INSÉRER OBLIGATOIREMENT DANS STOCK_HISTORY
+            const stockHistoryPayload = {
+                product_name: productName,
+                type: "VENTE",
+                quantity_change: -item.qty,
+                new_stock: newStock,
+                notes: `Vente #${venteId}`,
+                created_at: new Date().toISOString()
+            };
 
-                // 2. Insérer la ligne de mouvement dans 'stock_history'
-                const stockHistoryPayload = {
-                    product_name: productName,
-                    type: "VENTE",
-                    quantity_change: -item.qty,
-                    new_stock: newStock,
-                    notes: `Vente #${venteId}`,
-                    created_at: new Date().toISOString()
-                };
+            const { error: stockErr } = await supabase
+                .from("stock_history")
+                .insert([stockHistoryPayload]);
 
-                const { error: stockHistoryError } = await supabase
-                    .from("stock_history")
-                    .insert([stockHistoryPayload]);
-
-                if (stockHistoryError) {
-                    console.error("Erreur insertion stock_history :", stockHistoryError);
-                    alert(`Erreur Historique Stock (${productName}) : ` + stockHistoryError.message);
-                }
+            if (stockErr) {
+                alert("ERREUR HISTORIQUE STOCK : " + stockErr.message);
+                console.error("Détail Erreur stock_history :", stockErr);
             }
         }
 
         showNotification("Vente effectuée avec succès !", "success");
 
-        // ---------------------------------------------------------
-        // D. RÉINITIALISATION COMPLÈTE DU PANIER ET DU DOM
-        // ---------------------------------------------------------
-        
-        // 1. Vider le tableau JS
+        // 4. RÉINITIALISATION DU PANIER ET DE L'INTERFACE
         cart = [];
-
-        // 2. Réinitialiser les champs de saisie de la caisse
         if (receivedEl) receivedEl.value = "";
 
         const changeDisplayEl = document.getElementById("change-amount");
@@ -177,16 +148,6 @@ async function checkout() {
         const totalDisplayEl = document.getElementById("cart-total");
         if (totalDisplayEl) totalDisplayEl.textContent = "0,00 Ar";
 
-        const searchInput = document.getElementById("product-search");
-        if (searchInput) searchInput.value = "";
-
-        const unitPriceInput = document.getElementById("unit-price");
-        if (unitPriceInput) unitPriceInput.value = "0 Ar";
-
-        const qtyInput = document.getElementById("product-qty");
-        if (qtyInput) qtyInput.value = "1";
-
-        // 3. Mettre à jour l'affichage de la table du panier
         if (typeof renderCart === "function") {
             renderCart();
         } else {
@@ -196,15 +157,13 @@ async function checkout() {
             }
         }
 
-        // 4. Recharger les données depuis Supabase
         await loadInventoryFromSupabase();
         await loadSalesFromSupabase();
 
     } catch (err) {
-        console.error("Erreur inattendue dans checkout() :", err);
-        alert("Une erreur inattendue s'est produite : " + err.message);
+        alert("Erreur inattendue : " + err.message);
+        console.error("Catch error:", err);
     } finally {
-        // Libérer le verrou d'exécution
         isCheckoutProcessing = false;
         if (checkoutBtn) checkoutBtn.disabled = false;
     }
