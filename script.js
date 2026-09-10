@@ -34,7 +34,6 @@ window.addEventListener("DOMContentLoaded", async () => {
 let isCheckoutProcessing = false;
 
 async function checkout() {
-    // 1. Empêcher le double-clic instantané
     if (isCheckoutProcessing) return;
 
     if (cart.length === 0) {
@@ -51,17 +50,14 @@ async function checkout() {
         return;
     }
 
-    // Activer le verrou
     isCheckoutProcessing = true;
-
-    // Optionnel : Désactiver visuellement le bouton de validation s'il existe
     const checkoutBtn = document.getElementById("checkout-btn");
     if (checkoutBtn) checkoutBtn.disabled = true;
 
     try {
         const { data: { user } } = await supabase.auth.getUser();
 
-        // Enregistrement de la vente principale
+        // 1. Enregistrement de la vente
         const salePayload = {
             total: total,
             change_amount: received - total,
@@ -82,7 +78,7 @@ async function checkout() {
         if (insertedSale && insertedSale.length > 0) {
             const venteId = insertedSale[0].id;
 
-            // Préparation des lignes de ventes
+            // 2. Enregistrement des lignes
             const ligneVentesPayload = cart.map(item => ({
                 vente_id: venteId,
                 produit_id: item.id,
@@ -91,15 +87,9 @@ async function checkout() {
                 total_ligne: item.qty * item.unitPrice
             }));
 
-            const { error: ligneError } = await supabase
-                .from("ligne_ventes")
-                .insert(ligneVentesPayload);
+            await supabase.from("ligne_ventes").insert(ligneVentesPayload);
 
-            if (ligneError) {
-                console.error("Erreur Ligne Ventes:", ligneError);
-            }
-
-            // Mise à jour des stocks et enregistrement historique
+            // 3. Mise à jour des stocks + Historique
             for (const item of cart) {
                 const product = inventory.find(p => p.id === item.id);
                 if (product) {
@@ -129,23 +119,50 @@ async function checkout() {
 
         showNotification("Vente effectuée avec succès !", "success");
 
-        // 2. Vider le panier et mettre à jour le DOM immédiatement
+        // =========================================================
+        // REINITIALISATION DE L'INTERFACE (PANIER ET FORMULAIRE)
+        // =========================================================
+        
+        // 1. Vider le tableau JS
         cart = [];
+
+        // 2. Réinitialiser les champs de saisie du client
         if (receivedEl) receivedEl.value = "";
         
-        // Appelez ici votre fonction qui rafraîchit la liste du panier à l'écran
+        const changeDisplayEl = document.getElementById("change-amount");
+        if (changeDisplayEl) changeDisplayEl.textContent = "0,00 Ar";
+
+        const totalDisplayEl = document.getElementById("cart-total");
+        if (totalDisplayEl) totalDisplayEl.textContent = "0,00 Ar";
+
+        // 3. Réinitialiser les champs de gauche (Ajouter au panier)
+        const searchInput = document.getElementById("product-search");
+        if (searchInput) searchInput.value = "";
+        
+        const unitPriceInput = document.getElementById("unit-price");
+        if (unitPriceInput) unitPriceInput.value = "0 Ar";
+
+        const qtyInput = document.getElementById("product-qty");
+        if (qtyInput) qtyInput.value = "1";
+
+        // 4. Mettre à jour la table HTML du panier
         if (typeof renderCart === "function") {
             renderCart();
+        } else {
+            // Sécurité si renderCart n'existe pas : vider le <tbody> directement
+            const cartTableBody = document.querySelector("#cart-table tbody") || document.getElementById("cart-list");
+            if (cartTableBody) {
+                cartTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--text-muted);">Panier vide</td></tr>`;
+            }
         }
 
-        // Rechargement des données de la base
+        // Recharger les données à jour
         await loadInventoryFromSupabase();
         await loadSalesFromSupabase();
 
     } catch (err) {
         console.error("Erreur globale checkout :", err);
     } finally {
-        // Déverrouiller le bouton une fois l'opération terminée
         isCheckoutProcessing = false;
         if (checkoutBtn) checkoutBtn.disabled = false;
     }
